@@ -1,0 +1,83 @@
+---
+- name: Install and Run Atomic Red Team
+  hosts: windows
+  gather_facts: yes
+  tasks:
+    - name: Create Atomic Red Team directory
+      win_file:
+        path: C:\AtomicRedTeam
+        state: directory
+
+    - name: Install NuGet Package Provider
+      win_shell: |
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
+      ignore_errors: yes
+
+    - name: Install PowerShell-Yaml Module
+      win_shell: |
+        Install-Module -Name powershell-yaml -Force -Confirm:$false -AllowClobber
+      ignore_errors: yes
+
+    - name: Download and Install Atomic Red Team
+      win_shell: |
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Set-Location C:\AtomicRedTeam
+        IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
+        Install-AtomicRedTeam -getAtomics -Force
+
+    - name: Execute Atomic Test
+      win_shell: |
+        $env:PSModulePath = $env:PSModulePath + ";C:\AtomicRedTeam"
+        Import-Module "C:\AtomicRedTeam\invoke-atomicredteam\Invoke-AtomicRedTeam.psd1" -Force
+        Set-Location C:\AtomicRedTeam
+        
+        Write-Host "Starting test execution for {{ technique_id }}..."
+        Invoke-AtomicTest {{ technique_id }} -Force | Tee-Object -FilePath "C:\AtomicRedTeam\execution.log"
+
+    - name: Get Test Results
+      win_shell: |
+        if (Test-Path "C:\AtomicRedTeam\execution.log") {
+            Get-Content "C:\AtomicRedTeam\execution.log"
+        } else {
+            Write-Host "Execution log not found"
+        }
+      register: test_results
+
+    - name: Display Test Results
+      debug:
+        var: test_results.stdout_lines
+# Add new Linux hosts playbook
+- name: Install and Run Atomic Red Team on Linux
+  hosts: linux
+  gather_facts: yes
+  tasks:
+    - name: Install required packages
+      shell: |
+        apt-get update
+        apt-get install -y git wget rsyslog python3 python3-pip
+      become: yes
+      ignore_errors: yes
+
+    - name: Clone Atomic Red Team repository
+      shell: |
+        cd /opt
+        git clone https://github.com/redcanaryco/atomic-red-team.git
+        chmod -R 755 atomic-red-team
+      become: yes
+
+    - name: Execute Linux Attack
+      shell: |
+        cd /opt/atomic-red-team/atomics/T1087/src/
+        chmod +x linux_users.sh
+        ./linux_users.sh 2>&1 | logger -t atomic-test
+      become: yes
+
+    - name: Get syslog output
+      shell: |
+        grep "atomic-test" /var/log/syslog | tail -n 20
+      register: syslog_output
+
+    - name: Display syslog output
+      debug:
+        var: syslog_output.stdout_lines
