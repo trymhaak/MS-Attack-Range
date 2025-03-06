@@ -1,0 +1,28 @@
+all:
+  children:
+    linux:
+      hosts:
+        attack-range-kali:
+          ansible_host: 20.185.39.22
+      vars:
+        ansible_connection: ssh
+        ansible_ssh_private_key_file: ~/.ssh/id_rsa
+        ansible_user: kali
+    windows:
+      hosts:
+        attack-range-dc:
+          ansible_host: 172.206.205.194
+          ansible_winrm_operation_timeout_sec: 60
+          ansible_winrm_read_timeout_sec: 70
+        attack-range-workstation:
+          ansible_host: 172.174.62.228
+          ansible_winrm_operation_timeout_sec: 60
+          ansible_winrm_read_timeout_sec: 70
+      vars:
+        ansible_connection: winrm
+        ansible_password: YourSecurePassword123!AttackRange2024!
+        ansible_port: '5985'
+        ansible_user: azureuser
+        ansible_winrm_scheme: http
+        ansible_winrm_server_cert_validation: ignore
+        ansible_winrm_transport: ntlm
