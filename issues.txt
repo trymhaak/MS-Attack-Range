@@ -1,0 +1,8 @@
+ModuleNotFoundError: No module named 'azure
+solution 1: pip install azure-identity azure-mgmt-resource azure-mgmt-network azure-mgmt-compute pyyaml or python3 -m pip install azure-identity azure-mgmt-resource azure-mgmt-network azure-mgmt-compute pyyaml
+
+
+Executing command: ansible-playbook -i playbooks/inventory.yml playbooks/install_atomic.yml -e technique_id=T1059.001 -vv
+sh: line 1: /home/.local/bin/ansible-playbook: cannot execute: required file not found
+Error: Attack powershell_exec failed
+solution: install ansible
