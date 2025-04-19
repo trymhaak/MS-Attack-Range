@@ -1,6 +1,6 @@
 prefix = "attack-range"
-location = "eastus"
+location = "uksouth"
 resource_group_name = "attack-range-rg"
 admin_username = "azureuser"
-admin_password = "YourSecurePassword123!AttackRange2024!"
-ssh_public_key = "ssh-rsa "
+admin_password = "YourSecurePassword123!AttackRange2024!"  # CHANGE THIS!
+ssh_public_key = "ssh-rsa " # Replace with your SSH public key
