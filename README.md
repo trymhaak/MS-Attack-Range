@@ -77,7 +77,7 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
 
 1. **Clone the repository**
    ```
-   git clone https://github.com/yourusername/ms-attack-range.git
+   git clone https://github.com/oloruntolaallbert/MS-Attack-Range
    cd ms-attack-range
    ```
 
