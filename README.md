@@ -10,33 +10,6 @@ Deploy a complete Azure infrastructure using Terraform
 - Run attack simulations based on MITRE ATT&CK techniques
 - Test detection capabilities in Microsoft Sentinel
 
-# Key Components
-From the files you've provided, here's how the solution is structured:
-
-# Terraform Infrastructure:
-
-- Windows Domain Controller
-- Windows Workstation
-- Kali Linux attack machine
-- Azure Log Analytics Workspace with Microsoft Sentinel
-- Network configuration and security groups
-- Data collection rules and connectors
-
-
-# Attack Simulation:
-
-- Uses Ansible playbooks to run attacks
-- Incorporates Atomic Red Team tests
-- Supports individual attack techniques and pre-defined sequences
-- Covers various MITRE ATT&CK tactics and techniques
-
-
-# Python Control Script:
-
-- attack-range.py as the main control interface
-- Commands for building, destroying, and updating the infrastructure
-- Functions to run individual attacks or attack sequences
-
 ![image](https://github.com/user-attachments/assets/fc084318-da2c-46a0-91c3-3c09899ee775)
 Time for the real fun begins!
 
@@ -63,15 +36,21 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
 - **Kali Linux**: An attack machine preloaded with security testing tools
 - **Microsoft Sentinel**: A cloud-native SIEM and SOAR solution for security monitoring
 - **Attack Simulation Framework**: Ansible-based attack automation using Atomic Red Team tests
+- **Data Collection Rules**: Automated log collection from all VMs
+- **Attack Simulation Framework**: Ansible-based attack automation using Atomic Red Team tests
+- **Data Connectors**: 5 pre-configured data sources (Windows Events, Syslog, Microsoft Defender for Endpoint, Entra ID, Microsoft XDR)
 
 ## Prerequisites
 
-- Azure subscription
+- Azure subscription with Contributor and Security Admin permissions
 - Terraform 1.0.0+
 - Python 3.7+
 - Ansible 2.9+
 - Azure CLI
 - SSH key pair for accessing Linux machines
+- At least 12 vCPUs available in your subscription for the VMs
+
+  If you're using a service principal for deployment, ensure it has these role assignments.
 
 ## Quick Start
 
