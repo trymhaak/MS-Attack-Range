@@ -63,7 +63,8 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
 3. **Configure your deployment**
    - Edit `terraform/terraform.tfvars` with your specific settings
    - Edit `attack-range.yml` to configure attack scenarios
-Security Considerations:
+     
+**Security Considerations:**
 - Change default passwords in terraform.tfvars before deployment
 - The current NSG allows RDP (3389) and SSH (22) from any source - restrict to specific IPs
 - Rotate SSH keys periodically
