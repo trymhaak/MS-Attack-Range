@@ -1,0 +1,1383 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workspace": {
+            "type": "String"
+        }
+    },
+    "resources": [
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/25a4ac0c-0b12-41d8-af6c-89c9e88afd87')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/25a4ac0c-0b12-41d8-af6c-89c9e88afd87')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Linux Attack Activities Detection",
+                "description": "This advanced detection identifies potential attack activities on Linux systems by monitoring syslog for suspicious patterns, tools, and behaviors commonly associated with various attack phases.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let timeframe = 1h;\r\nlet attack_tools = dynamic([\r\n    // Network scanners\r\n    \"nmap\", \"masscan\", \"netcat\", \"nc \", \"nikto\", \"dirb\", \"gobuster\", \"enum4linux\",\r\n    // Brute force tools\r\n    \"hydra\", \"medusa\", \"patator\", \"bruteforce\", \"brute-force\", \"crack\", \r\n    // Exploitation frameworks\r\n    \"metasploit\", \"msfconsole\", \"meterpreter\", \"exploit\", \"reverse shell\", \"bind shell\",\r\n    // Privilege escalation\r\n    \"linpeas\", \"linenum\", \"gtfobins\", \"suid\", \"setuid\", \"setgid\", \"capability\",\r\n    // Data collection/exfiltration \r\n    \"mimipenguin\", \"lazagne\", \"credentials\", \"password dump\",\r\n    // Atomic test tag (added back)\r\n    \"atomic-test\"\r\n]);\r\n// Pattern-based detection\r\nlet attack_patterns = \r\nSyslog\r\n| where TimeGenerated > ago(timeframe)\r\n// Look for known attack tools and techniques\r\n| where ProcessName has_any (attack_tools) or SyslogMessage has_any (attack_tools)\r\n// Extract IP addresses from syslog message for context\r\n| extend SourceIP = extract(\"(\\\\d{1,3}\\\\.\\\\d{1,3}\\\\.\\\\d{1,3}\\\\.\\\\d{1,3})\", 1, SyslogMessage)\r\n| extend AttackType = case(\r\n    SyslogMessage has \"atomic-test\", \"Atomic Test\",\r\n    ProcessName has_any(\"nmap\", \"masscan\", \"nikto\") or SyslogMessage has_any(\"nmap\", \"masscan\", \"nikto\"), \"Reconnaissance\",\r\n    ProcessName has_any(\"hydra\", \"medusa\") or SyslogMessage has_any(\"hydra\", \"bruteforce\", \"brute-force\"), \"Brute Force\",\r\n    ProcessName has_any(\"msfconsole\", \"metasploit\") or SyslogMessage has_any(\"exploit\", \"reverse shell\"), \"Exploitation\",\r\n    ProcessName has_any(\"mimipenguin\", \"lazagne\") or SyslogMessage has_any(\"credentials\", \"password\"), \"Credential Access\",\r\n    ProcessName has_any(\"linpeas\", \"linenum\") or SyslogMessage has_any(\"suid\", \"privilege\"), \"Privilege Escalation\",\r\n    \"Suspicious Activity\"\r\n);\r\n// Login-based detection\r\nlet suspicious_logins = \r\nSyslog\r\n| where TimeGenerated > ago(timeframe)\r\n| where Facility == \"auth\" or Facility == \"authpriv\"\r\n// Failed authentication patterns\r\n| where SyslogMessage has \"Failed password\" or \r\n        SyslogMessage has \"authentication failure\" or \r\n        SyslogMessage has \"invalid user\"\r\n// Extract username\r\n| extend User = extract(\"user(name)? ([\\\\w-]+)\", 2, SyslogMessage)\r\n// Extract IP\r\n| extend SourceIP = extract(\"from ([0-9\\\\.]+)\", 1, SyslogMessage)\r\n// Group to find brute force patterns\r\n| summarize \r\n    FailedCount = count(),\r\n    FirstAttempt = min(TimeGenerated),\r\n    LastAttempt = max(TimeGenerated),\r\n    IPAddresses = make_set(SourceIP, 10)\r\n    by HostName, User\r\n| where FailedCount > 5\r\n| extend AttackType = \"Authentication Brute Force\";\r\n// Privilege escalation detection\r\nlet privilege_escalation =\r\nSyslog\r\n| where TimeGenerated > ago(timeframe)\r\n// Sudo commands and privilege changes\r\n| where SyslogMessage has \"sudo:\" or\r\n        SyslogMessage has \"COMMAND=\" or\r\n        SyslogMessage has \"elevated privileges\" or\r\n        SyslogMessage has \"permitted user\" or\r\n        SyslogMessage has \"USER=root\"\r\n// Filter out common admin activity\r\n| where not(SyslogMessage has_any(\"sudo: session closed\", \"sudo: pam_unix\", \"COMMAND=/usr/bin/apt\", \"COMMAND=/usr/bin/yum\"))\r\n// Extract the user and command\r\n| extend User = extract(\"(uid|USER)=([\\\\w-]+)\", 2, SyslogMessage)\r\n| extend Command = extract(\"COMMAND=([^;]+)\", 1, SyslogMessage)\r\n| extend AttackType = \"Privilege Escalation\";\r\n// Shell spawning detection\r\nlet shell_spawning =\r\nSyslog\r\n| where TimeGenerated > ago(timeframe)\r\n// Shell creation patterns\r\n| where SyslogMessage has_any(\"/bin/sh\", \"/bin/bash\", \"shell\", \"terminal\") and \r\n        (SyslogMessage has_any(\"spawn\", \"exec\", \"started\") or ProcessName has_any(\"sh\", \"bash\"))\r\n// Filter legitimate shells\r\n| where not(ProcessName has_any(\"sshd\", \"login\", \"systemd\"))\r\n| extend AttackType = \"Shell Spawning\";\r\n// Combine all detections\r\nunion attack_patterns, suspicious_logins, privilege_escalation, shell_spawning\r\n| project\r\n    TimeGenerated,\r\n    HostName,\r\n    AttackType, \r\n    User,\r\n    ProcessName,\r\n    SourceIP,\r\n    SyslogMessage\r\n| order by TimeGenerated desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Reconnaissance",
+                    "CredentialAccess",
+                    "PrivilegeEscalation"
+                ],
+                "techniques": [
+                    "T1595",
+                    "T1110",
+                    "T1548"
+                ],
+                "subTechniques": [
+                    "T1595.002",
+                    "T1548.003"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "HostName"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/47bff0b5-5eb2-4aeb-897a-1644740a2db6')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/47bff0b5-5eb2-4aeb-897a-1644740a2db6')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Security Event log cleared",
+                "description": "Checks for event id 1102 which indicates the security event log was cleared.\nIt uses Event Source Name \"Microsoft-Windows-Eventlog\" to avoid generating false positives from other sources, like AD FS servers for instance.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "(union isfuzzy=true\n(\nSecurityEvent\n| where EventID == 1102 and EventSourceName == \"Microsoft-Windows-Eventlog\"\n| summarize StartTimeUtc = min(TimeGenerated), EndTimeUtc = max(TimeGenerated), EventCount = count() by Computer, Account, EventID, Activity\n| extend timestamp = StartTimeUtc, AccountCustomEntity = Account, HostCustomEntity = Computer\n),\n(\nWindowsEvent\n| where EventID == 1102 and Provider == \"Microsoft-Windows-Eventlog\"\n| extend Account =  strcat(tostring(EventData.SubjectDomainName),\"\\\\\", tostring(EventData.SubjectUserName))\n| extend Activity= \"1102 - The audit log was cleared.\"\n| summarize StartTimeUtc = min(TimeGenerated), EndTimeUtc = max(TimeGenerated), EventCount = count() by Computer, Account, EventID, Activity\n| extend timestamp = StartTimeUtc, AccountCustomEntity = Account, HostCustomEntity = Computer\n)\n)",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5M",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "DefenseEvasion"
+                ],
+                "techniques": [
+                    "T1070"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": "80da0a8f-cfe1-4cd0-a895-8bc1771a720e",
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5M",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": null,
+                        "groupByCustomDetails": null
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": {
+                    "alertDynamicProperties": []
+                },
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "FullName",
+                                "columnName": "AccountCustomEntity"
+                            }
+                        ]
+                    },
+                    {
+                        "entityType": "Host",
+                        "fieldMappings": [
+                            {
+                                "identifier": "FullName",
+                                "columnName": "HostCustomEntity"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": "1.1.2"
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/c2d694ed-c03a-45d3-b0ef-213b03f8b4c8')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/c2d694ed-c03a-45d3-b0ef-213b03f8b4c8')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Cross-Platform Attack Detection",
+                "description": "This enhanced query provides unified visibility into attack techniques across both Windows and Linux systems. It categorizes activities according to common attack stages and adds risk scoring to help prioritize investigation",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let timeframe = 1h;\r\nlet winExcludedAccounts = dynamic([\"NT AUTHORITY\\\\SYSTEM\", \"NT SERVICE\\\\SCCM\", \"NT AUTHORITY\\\\NETWORK SERVICE\"]);\r\nlet linuxExcludedProcesses = dynamic([\"systemd\", \"cron\", \"sshd\", \"CRON\", \"rsyslogd\"]);\r\n// Focus on high-fidelity attack indicators only\r\nlet highRiskCommands = dynamic([\r\n    // Credential dumping tools\r\n    \"mimikatz\", \"sekurlsa\", \"lsadump\", \"wce.exe\", \"pwdump\", \"gsecdump\", \"lsass.dmp\",\r\n    // Remote access tools\r\n    \"psexec\", \"wmiexec\", \"xp_cmdshell\",\r\n    // Exploitation frameworks\r\n    \"meterpreter\", \"empire\", \"cobaltstrike\", \"bloodhound\",\r\n    // Suspicious PowerShell\r\n    \"iex(new-object net.webclient).downloadstring\", \"downloadfile(\", \"frombase64string(\", \"-enc \",\r\n    // Linux-specific\r\n    \"hydra -l\", \"medusa -u\", \"/dev/shm/.\",\"nc -e\", \"ncat -e\", \"chmod +s\", \"setuid\"\r\n]);\r\n// Windows-specific high-fidelity detections\r\nlet windowsAttacks = \r\nSecurityEvent\r\n| where TimeGenerated > ago(timeframe)\r\n| where EventID == 4688 // Process creation\r\n| where not(Account in (winExcludedAccounts))\r\n// Only look for highly suspicious commands\r\n| where CommandLine has_any (highRiskCommands)\r\n   or (NewProcessName has_any(\"powershell.exe\", \"pwsh.exe\") \r\n       and CommandLine has_any(\"hidden\", \"bypass\", \"-e \", \"-enc\") \r\n       and CommandLine has_any(\"http://\", \"https://\", \"downloadstring\"))\r\n| extend \r\n    OS = \"Windows\",\r\n    SourceUser = Account,\r\n    ProcessPath = NewProcessName\r\n| project \r\n    TimeGenerated, \r\n    Computer, \r\n    SourceUser,\r\n    ProcessPath,\r\n    CommandLine, \r\n    OS;\r\n// Linux-specific high-fidelity detections\r\nlet linuxAttacks = \r\nSyslog\r\n| where TimeGenerated > ago(timeframe)\r\n| where not(ProcessName in (linuxExcludedProcesses))\r\n// Only match on highly suspicious patterns\r\n| where SyslogMessage has_any (highRiskCommands)\r\n   or SyslogMessage has_any(\"atomic-test\", \"privilege escalation\", \"reverse shell\", \"bind shell\")\r\n   or (SyslogMessage has \"sudo\" and SyslogMessage has_any(\"chmod 777\", \"chmod +s\", \"visudo\", \"NOPASSWD\"))\r\n| extend \r\n    OS = \"Linux\", \r\n    Computer = HostName, \r\n    CommandLine = SyslogMessage, \r\n    ProcessPath = ProcessName,\r\n    SourceUser = extract(\"user=([\\\\w-]+)\", 1, SyslogMessage)\r\n| project \r\n    TimeGenerated, \r\n    Computer, \r\n    SourceUser,\r\n    ProcessPath,\r\n    CommandLine, \r\n    OS;\r\n// Combine results - only get high-fidelity matches\r\nwindowsAttacks\r\n| union linuxAttacks\r\n| order by TimeGenerated desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "CredentialAccess",
+                    "Execution",
+                    "DefenseEvasion",
+                    "CommandAndControl"
+                ],
+                "techniques": [
+                    "T1003",
+                    "T1059",
+                    "T1070",
+                    "T1071"
+                ],
+                "subTechniques": [
+                    "T1003.001",
+                    "T1059.001",
+                    "T1059.003"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": null,
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/d032b1ee-9e06-45f5-8024-24ebc3f7c6ec')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/d032b1ee-9e06-45f5-8024-24ebc3f7c6ec')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR CA - Detecting Nmap and Hydra Scans from Ansible Playbook",
+                "description": "Detect network scan and brute force activities(custom)  attack simulation playbook",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "Syslog\r\n| where SyslogMessage has_any (\"nmap -sS\", \"hydra\", \"rdp -t\", \"bruteforce\", \"scan\", \"wordlists/rockyou.txt\")\r\n| extend HostCustomEntity = HostName\r\n| project TimeGenerated, HostName, ProcessName, SyslogMessage",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [],
+                "techniques": [],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": null,
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/c1d7b209-a674-446f-8160-bd1fde1ceebd')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/c1d7b209-a674-446f-8160-bd1fde1ceebd')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Brute Force Authentication Detection",
+                "description": "This detection identifies potential brute force attacks against Windows systems by monitoring for multiple failed logon attempts within a short time period. It provides detailed context about the authentication failures, including the specific reasons for failure and logon types being attempted.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let detection_window = 5m;\r\nlet threshold = 5;\r\nlet known_ips = dynamic([\"127.0.0.1\", \"::1\"]); // Add known IPs if needed\r\nlet known_exemptions = dynamic([\"service_acct1\", \"service_acct2\"]); // Add service accounts to exclude\r\nSecurityEvent\r\n| where EventID == 4625 // Failed logon\r\n// Extract failure reason\r\n| extend FailureReason = case(\r\n    SubStatus == '0xc000006a', \"Invalid username or password\",\r\n    SubStatus == '0xc000006d', \"Incorrect username or password\",\r\n    SubStatus == '0xc000006f', \"Account time restriction\",\r\n    SubStatus == '0xc0000070', \"Account restriction\",\r\n    SubStatus == '0xc0000071', \"Expired password\",\r\n    SubStatus == '0xc0000072', \"Account disabled\",\r\n    SubStatus == '0xc0000193', \"Account expired\",\r\n    SubStatus == '0xc0000224', \"Password must change\",\r\n    SubStatus == '0xc0000234', \"Account locked\",\r\n    SubStatus == '0xc0000371', \"The local account store does not contain secret material for the specified account\",\r\n    SubStatus == '0xc000015b', \"The user has not been granted the requested logon type\",\r\n    strcat(\"Unknown reason: \", SubStatus)\r\n)\r\n// Extract logon type\r\n| extend LogonType = case(\r\n    LogonType == 2, \"Interactive\",\r\n    LogonType == 3, \"Network\",\r\n    LogonType == 4, \"Batch\",\r\n    LogonType == 5, \"Service\",\r\n    LogonType == 7, \"Unlock\",\r\n    LogonType == 8, \"NetworkCleartext\",\r\n    LogonType == 9, \"NewCredentials\",\r\n    LogonType == 10, \"RemoteInteractive\",\r\n    LogonType == 11, \"CachedInteractive\",\r\n    strcat(\"Unknown logon type: \", LogonType)\r\n)\r\n// Add context\r\n| extend SourceWorkstation = iff(isempty(WorkstationName), Computer, WorkstationName)\r\n| extend TargetUserSID = TargetUserSid\r\n// Group for analysis\r\n| summarize \r\n    FailedAttempts = count(), \r\n    FailureReasons = make_set(FailureReason, 5), \r\n    TargetUserSIDs = make_set(TargetUserSID, 5),\r\n    SourceWorkstations = make_set(SourceWorkstation, 5),\r\n    min_TimeGenerated = min(TimeGenerated),\r\n    max_TimeGenerated = max(TimeGenerated)\r\n    by Computer, IpAddress, TargetAccount, AuthenticationPackageName, LogonType, bin(TimeGenerated, detection_window)\r\n// Apply threshold\r\n| where FailedAttempts >= threshold\r\n// Filter out known exclusions\r\n| where not(IpAddress in (known_ips))\r\n| where not(TargetAccount in (known_exemptions))\r\n// Calculate time span - fixed data type issue\r\n| extend TimeDelta = datetime_diff('second', max_TimeGenerated, min_TimeGenerated)\r\n| extend AttemptsPerSecond = toreal(FailedAttempts) / iff(TimeDelta == 0, 1.0, toreal(TimeDelta))\r\n// Apply risk score\r\n| extend RiskScore = case(\r\n    AttemptsPerSecond > 1, \"High\",\r\n    FailedAttempts > 10, \"High\",\r\n    FailedAttempts > 7, \"Medium\",\r\n    \"Low\"\r\n)\r\n| project\r\n    TimeGenerated,\r\n    Computer,\r\n    IpAddress,\r\n    TargetAccount,\r\n    FailedAttempts,\r\n    AttemptsPerSecond,\r\n    AuthenticationPackageName,\r\n    LogonType,\r\n    FailureReasons,\r\n    SourceWorkstations,\r\n    TargetUserSIDs,\r\n    RiskScore\r\n| order by FailedAttempts desc, AttemptsPerSecond desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "CredentialAccess"
+                ],
+                "techniques": [
+                    "T1110"
+                ],
+                "subTechniques": [
+                    "T1110.001"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "IP",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Address",
+                                "columnName": "IpAddress"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/ee69cf04-1aaa-490d-a1cc-5ab196b8f498')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/ee69cf04-1aaa-490d-a1cc-5ab196b8f498')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Registry Run Key Persistence Detection",
+                "description": "This detection identifies attempts to establish persistence through Windows registry autorun keys. It monitors for modifications to Run, RunOnce and Services registry locations that enable programs to automatically execute during system startup or user logon",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let excluded_accounts = dynamic([\"NT AUTHORITY\\\\SYSTEM\", \"NT SERVICE\\\\TrustedInstaller\"]);\r\nlet run_key_paths = dynamic([\r\n    \"\\\\\\\\Software\\\\\\\\Microsoft\\\\\\\\Windows\\\\\\\\CurrentVersion\\\\\\\\Run\",\r\n    \"\\\\\\\\Software\\\\\\\\Microsoft\\\\\\\\Windows\\\\\\\\CurrentVersion\\\\\\\\RunOnce\",\r\n    \"\\\\\\\\Software\\\\\\\\Microsoft\\\\\\\\Windows\\\\\\\\CurrentVersion\\\\\\\\RunServices\",\r\n    \"\\\\\\\\Software\\\\\\\\Microsoft\\\\\\\\Windows\\\\\\\\CurrentVersion\\\\\\\\RunServicesOnce\",\r\n    \"\\\\\\\\Software\\\\\\\\Wow6432Node\\\\\\\\Microsoft\\\\\\\\Windows\\\\\\\\CurrentVersion\\\\\\\\Run\"\r\n]);\r\nlet services_key_path = \"HKLM\\\\\\\\SYSTEM\\\\\\\\CurrentControlSet\\\\\\\\Services\";\r\nSecurityEvent\r\n| where EventID == 4688\r\n| where \r\n    // CMD/REG.EXE modifications\r\n    (CommandLine has_any(\"reg add\", \"reg.exe add\") and (\r\n        CommandLine has_any(run_key_paths) or\r\n        CommandLine has services_key_path\r\n    )) or\r\n    // PowerShell modifications\r\n    (NewProcessName has_any(\"powershell.exe\", \"pwsh.exe\") and (\r\n        CommandLine has_any(\"New-ItemProperty\", \"Set-ItemProperty\", \"Add-Content\") and\r\n        CommandLine has_any(run_key_paths)\r\n    )) or\r\n    // Direct registry modification tools\r\n    (NewProcessName has_any(\"regedit.exe\", \"regini.exe\") and\r\n        ParentProcessName !has \"explorer.exe\"\r\n    )\r\n// Exclude expected system processes\r\n| where not(Account in (excluded_accounts))\r\n// Extract registry information\r\n| extend RegistryPath = case(\r\n    CommandLine has \"HKLM\", extract(@\"(HKLM\\\\[^\"\"\\s]+)\", 1, CommandLine),\r\n    CommandLine has \"HKCU\", extract(@\"(HKCU\\\\[^\"\"\\s]+)\", 1, CommandLine),\r\n    CommandLine has \"HKEY_LOCAL_MACHINE\", extract(@\"(HKEY_LOCAL_MACHINE\\\\[^\"\"\\s]+)\", 1, CommandLine),\r\n    CommandLine has \"HKEY_CURRENT_USER\", extract(@\"(HKEY_CURRENT_USER\\\\[^\"\"\\s]+)\", 1, CommandLine),\r\n    CommandLine has \"Registry::\", extract(\"(Registry::.*?)(\\\\'|\\\"|\\\\s|$)\", 1, CommandLine),\r\n    \"\"\r\n)\r\n| extend ValueName = extract(@\"\\s-v\\s+([^\\s]+)\", 1, CommandLine)\r\n| extend ValueData = extract(@\"\\s-d\\s+([^\\s]+)\", 1, CommandLine)\r\n// Identify suspicious value data\r\n| extend HasExecutable = iff(isnotempty(ValueData), \r\n    ValueData has_any(\".exe\", \".dll\", \".ps1\", \".vbs\", \".js\", \"cmd.exe\", \"powershell\", \"rundll32\", \"wscript\"),\r\n    CommandLine has_any(\".exe\", \".dll\", \".ps1\", \".vbs\", \".js\", \"cmd.exe\", \"powershell\", \"rundll32\", \"wscript\"))\r\n// Process context\r\n| extend ProcessName = tostring(split(NewProcessName, '\\\\')[-1])\r\n| extend ParentName = tostring(split(ParentProcessName, '\\\\')[-1])\r\n| extend IsUnusualParent = not(ParentProcessName has_any(\"cmd.exe\", \"powershell.exe\", \"explorer.exe\"))\r\n// Summarize findings\r\n| project\r\n    TimeGenerated,\r\n    Computer,\r\n    Account,\r\n    ProcessName,\r\n    ParentName,\r\n    RegistryPath,\r\n    ValueName,\r\n    ValueData,\r\n    HasExecutable,\r\n    IsUnusualParent,\r\n    CommandLine\r\n| order by TimeGenerated desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Persistence",
+                    "PrivilegeEscalation"
+                ],
+                "techniques": [
+                    "T1547",
+                    "T1543"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Process",
+                        "fieldMappings": [
+                            {
+                                "identifier": "CommandLine",
+                                "columnName": "CommandLine"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/de318c4d-eaaa-474e-a210-baf3acbd31d5')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/de318c4d-eaaa-474e-a210-baf3acbd31d5')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Suspicious Scheduled Task Creation",
+                "description": "This detection identifies the creation of Windows scheduled tasks, focusing on potentially suspicious configurations that could indicate persistence mechanisms being established by threat actors. It extracts key task attributes (name, command, and schedule) while highlighting unusual parent processes or suspicious commands embedded within the task.",
+                "severity": "Low",
+                "enabled": true,
+                "query": "let excluded_accounts = dynamic([\"NT AUTHORITY\\\\SYSTEM\", \"NT SERVICE\\\\SCCM\"]);\r\nlet legitimate_parents = dynamic([\"C:\\\\Windows\\\\System32\\\\services.exe\", \"C:\\\\Windows\\\\System32\\\\svchost.exe\"]);\r\nSecurityEvent\r\n| where EventID == 4688\r\n| where \r\n    // Command line contains scheduled task creation\r\n    (NewProcessName has \"schtasks.exe\" and CommandLine has_any(\"/create\", \"/sc\", \"/tr\")) or\r\n    CommandLine has_any(\"New-ScheduledTask\", \"Register-ScheduledTask\", \"ScheduledTaskAction\")\r\n// Exclude common system processes\r\n| where not(Account in (excluded_accounts) and ParentProcessName in (legitimate_parents))\r\n// Extract task information\r\n| extend TaskName = extract(@\"/tn\\s+[\"\"']?([^\"\"'\\/]+)\", 1, CommandLine)\r\n| extend TaskRun = extract(@\"/tr\\s+[\"\"']?([^\"\"']+)\", 1, CommandLine)\r\n| extend Schedule = extract(@\"/sc\\s+([^\\s]+)\", 1, CommandLine)\r\n// Look for suspicious command patterns\r\n| extend IsSuspiciousTask = \r\n    CommandLine has_any(\"powershell\", \"cmd /c\", \"rundll32\", \"regsvr32\", \"mshta\", \"wscript\", \"cscript\") or\r\n    TaskRun has_any(\"powershell\", \"cmd /c\", \"rundll32\", \"regsvr32\", \"mshta\", \"wscript\", \"cscript\", \"http:\", \"https:\") or\r\n    CommandLine has_any(\"hidden\", \"-w hidden\", \"-windowstyle hidden\", \"bypass\", \"-enc\", \"-e \", \".downloadstring\")\r\n// Provide context about the process\r\n| extend ProcessName = tostring(split(NewProcessName, '\\\\')[-1])\r\n| extend ParentPath = tostring(split(ParentProcessName, ProcessName)[0])\r\n| extend IsUnusualParent = not(ParentProcessName has_any(\"cmd.exe\", \"powershell.exe\", \"explorer.exe\", \"wmiprvse.exe\"))\r\n| project\r\n    TimeGenerated,\r\n    Computer,\r\n    Account,\r\n    SubjectUserName,\r\n    ProcessName,\r\n    ParentProcessName,\r\n    TaskName,\r\n    TaskRun,\r\n    Schedule,\r\n    CommandLine,\r\n    IsSuspiciousTask,\r\n    IsUnusualParent\r\n| order by TimeGenerated desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Execution",
+                    "Persistence",
+                    "PrivilegeEscalation"
+                ],
+                "techniques": [
+                    "T1053"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "Account"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/230899d8-ba9d-4bcd-a01d-b86264e74675')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/230899d8-ba9d-4bcd-a01d-b86264e74675')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR -  Suspicious PowerShell Execution Detection",
+                "description": "This detection identifies potentially malicious PowerShell execution patterns commonly used in attacks while reducing false positives from legitimate administrative scripts.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "// Optimized Suspicious PowerShell Detection with Decoding\r\n// Combined patterns for one-pass matching\r\nlet high_risk_patterns = dynamic([\r\n    \"mimikatz\", \"Invoke-Mimikatz\", \"Invoke-TokenManipulation\", \"Invoke-Shellcode\",\r\n    \"DownloadString.*http\", \"Net.WebClient.*http\", \"IEX.*Net.WebClient\", \"IEX.*http\"\r\n]);\r\nlet med_risk_patterns = dynamic([\r\n    \"-e[ncoded]* [A-Za-z0-9+/=]{100}\", \"-enc[oded]* [A-Za-z0-9+/=]{100}\",\r\n    \"bypass.*hidden\", \"hidden.*bypass\", \"-noprofile.*downloadstring\",\r\n    \"FromBase64String.*Invoke\", \"scriptblock.*bypass\"\r\n]);\r\n// First pass - aggressively filter before processing\r\nSecurityEvent\r\n| where EventID == 4688\r\n| where NewProcessName has_any(\"powershell.exe\", \"pwsh.exe\")\r\n// High-efficiency pre-filtering\r\n| where \r\n    CommandLine matches regex @\"(-e\\s+|-enc\\s+|bypass|hidden|iex\\s+|webclient|http:|invoke-|frombase64|scriptblock|encoded)\"\r\n    or strlen(CommandLine) > 300\r\n// Exclude obvious system processes\r\n| where not(Account startswith \"NT \" or Account has_any(\"svc_\"))\r\n// Extract encoded content\r\n| extend EncodedContent = extract(@\"(?i)-e\\w*(?:Command)?\\s+([A-Za-z0-9+/=]{20,})\", 1, CommandLine)\r\n// Base64 decode - extract the first 300 chars of decoded content for preview\r\n| extend DecodedPreview = iff(isnotempty(EncodedContent), \r\n    base64_decode_tostring(\r\n        replace_string(replace_string(replace_string(EncodedContent, \" \", \"\"), \"\\r\", \"\"), \"\\n\", \"\")\r\n    ), \"\")\r\n// Limit the preview length for performance\r\n| extend DecodedPreview = substring(DecodedPreview, 0, 300)\r\n// Quick scoring to filter out low-risk items early\r\n| extend HighRisk = CommandLine has_any(high_risk_patterns) or DecodedPreview has_any(high_risk_patterns)\r\n| extend MedRisk = CommandLine has_any(med_risk_patterns) or DecodedPreview has_any(med_risk_patterns) or CommandLine matches regex \"-e[a-z]* [A-Za-z0-9+/=]{500,}\"\r\n| extend CommandLen = strlen(CommandLine)\r\n| extend QuickScore = case(\r\n    HighRisk, 3,\r\n    MedRisk, 2,\r\n    CommandLen > 500, 1,\r\n    0\r\n)\r\n// Aggressively filter before detailed analysis\r\n| where QuickScore > 0\r\n// Simplified contextual data\r\n| extend ProcessName = tostring(split(NewProcessName, '\\\\')[-1])\r\n| extend ParentName = tostring(split(ParentProcessName, '\\\\')[-1])\r\n// Simple trusted path check\r\n| extend IsTrustedContext = ParentProcessName has_any(\"ccm\\\\\", \"sccm\\\\\", \"MsMpEng\", \"wmiprvse.exe\") \r\n                          or NewProcessName startswith \"C:\\\\Windows\\\\System32\"\r\n// Look for high-risk patterns in decoded content\r\n| extend HasDecodedRisk = isnotempty(DecodedPreview) and (\r\n    DecodedPreview has_any(\"IEX\", \"Invoke-Expression\", \"Net.WebClient\", \"DownloadString\", \r\n                          \"Invoke-\", \"scriptblock\", \"bypass\", \"hidden\", \"FromBase64String\")\r\n)\r\n// Final risk score - include decoded content in scoring\r\n| extend RiskScore = case(\r\n    HighRisk or HasDecodedRisk, 100,\r\n    MedRisk and not(IsTrustedContext), 70,\r\n    MedRisk and IsTrustedContext, 30,\r\n    CommandLen > 1000 and not(IsTrustedContext), 50,\r\n    CommandLen > 1000 and IsTrustedContext, 20,\r\n    CommandLen > 500 and not(IsTrustedContext), 30,\r\n    0\r\n)\r\n| where RiskScore > 20\r\n| project \r\n    TimeGenerated,\r\n    Computer, \r\n    Account,\r\n    ProcessName,\r\n    ParentName,\r\n    CommandLine,\r\n    EncodedContent,\r\n    DecodedPreview,\r\n    RiskScore,\r\n    HighRisk,\r\n    MedRisk,\r\n    HasDecodedRisk,\r\n    IsTrustedContext\r\n| order by RiskScore desc, TimeGenerated desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Execution"
+                ],
+                "techniques": [
+                    "T1059",
+                    "T1129"
+                ],
+                "subTechniques": [
+                    "T1059.001"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Process",
+                        "fieldMappings": [
+                            {
+                                "identifier": "CommandLine",
+                                "columnName": "CommandLine"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/d43f626c-4ee8-490b-b630-f5a20b8271eb')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/d43f626c-4ee8-490b-b630-f5a20b8271eb')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Credential Dumping Detection",
+                "description": "This detection identifies attempts to access or extract credentials from memory, registry, or on-disk sources. It focuses on known credential dumping tools and techniques used by adversaries to obtain password hashes, Kerberos tickets, or cleartext credentials.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let procdump_args = dynamic([\"-ma lsass\", \"lsass.exe\"]);\r\nlet exclusions = dynamic([\"c:\\\\program files\\\\sysinternal\", \"c:\\\\windows\\\\system32\\\\forfiles.exe\"]);\r\nSecurityEvent\r\n| where EventID == 4688 // Process creation\r\n| where (\r\n    // Specific credential dumping tools\r\n    CommandLine has_any(\"mimikatz\", \"gsecdump\", \"wce.exe\", \"pwdump\", \"fgdump\", \"lazagne\", \"crackmapexec\") or\r\n    // Mimikatz commands and modules\r\n    CommandLine has_any(\"sekurlsa::\", \"kerberos::list\", \"lsadump::\", \"crypto::\", \"privilege::debug\") or\r\n    // Process dump techniques targeting lsass\r\n    (CommandLine has_any(procdump_args) and not(NewProcessName has_any(exclusions))) or\r\n    (CommandLine has_any(\"comsvcs.dll\", \"#24\") and CommandLine has \"MiniDump\") or\r\n    CommandLine has_any(\"reg save HKLM\\\\sam\", \"reg save HKLM\\\\security\", \"esentutl.exe /y\") or\r\n    CommandLine has_any(\"vssadmin create shadow\", \"wmic shadowcopy\", \"ntdsutil\", \"diskshadow\") or\r\n    CommandLine has_any(\"rundll32.exe C:\\\\Windows\\\\System32\\\\comsvcs.dll\", \"lsass.dmp\", \"/ma lsass.exe\") or\r\n    CommandLine has_cs \"Get-WmiObject win32_shadowcopy\"\r\n)\r\n| extend ProcessName = tostring(split(NewProcessName, '\\\\')[-1])\r\n| extend ProcessDir = tostring(split(NewProcessName, ProcessName)[0])\r\n| extend ParentProcessName = tostring(split(ParentProcessName, '\\\\')[-1])\r\n// Add risk indicators\r\n| extend IsHighRisk = \r\n    CommandLine has_any(\"mimikatz\", \"sekurlsa::\", \"lsadump\", \"lsass.dmp\") or\r\n    (ProcessName in~ (\"rundll32.exe\", \"regsvr32.exe\") and CommandLine has_any(procdump_args))\r\n| extend IsFromTemp = ProcessDir has_any(\"\\\\temp\\\\\", \"\\\\tmp\\\\\", \"\\\\downloads\\\\\", \"\\\\appdata\\\\local\\\\\")\r\n| extend IsLolBin = ProcessName in~ (\"rundll32.exe\", \"regsvr32.exe\", \"certutil.exe\", \"wmic.exe\")\r\n| project \r\n    TimeGenerated, Computer, Account, SubjectUserName, \r\n    ProcessName, ParentProcessName, CommandLine,\r\n    IsHighRisk, IsFromTemp, IsLolBin\r\n| order by IsHighRisk desc, TimeGenerated desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "CredentialAccess"
+                ],
+                "techniques": [
+                    "T1003",
+                    "T1558"
+                ],
+                "subTechniques": [
+                    "T1003.001"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "Account"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/3f7e3be5-2e4d-4c90-aeff-5f5229b75772')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/3f7e3be5-2e4d-4c90-aeff-5f5229b75772')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR -  Account Discovery Activities Detection",
+                "description": "This detection identifies potential adversary reconnaissance of user accounts and groups. It monitors for commands and tools commonly used to enumerate local and domain users, helping to detect early-stage information gathering before privilege escalation or lateral movement attempts.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let excludedAccounts = dynamic([\"NT AUTHORITY\\\\SYSTEM\", \"NT SERVICE\\\\SCCM\"]);\r\nlet whitelistedComputers = dynamic([\"IT-ADMIN\", \"HELPDESK-PC\"]); // Add your admin workstations\r\nlet suspiciousArgs = dynamic([\"/domain\", \"administrators\", \"/add\", \"password\", \"-dump\", \"-json\"]);\r\nSecurityEvent\r\n| where EventID == 4688 \r\n| where (\r\n    CommandLine has_any(\"net user\", \"net group\", \"net localgroup\", \"whoami /all\", \"query user\") or\r\n    CommandLine has_any(\"Get-LocalUser\", \"Get-LocalGroup\", \"Get-ADUser\", \"Get-ADGroupMember\", \"Get-WmiObject win32_useraccount\") or\r\n    CommandLine has_any(\"wmic useraccount\", \"dsquery user\", \"dsget user\", \"nltest\", \"net accounts\") or\r\n    CommandLine has_any(\"/etc/passwd\", \"cat /etc/passwd\", \"finger\", \"getent passwd\", \"id -a\")\r\n)\r\n| where Account !in (excludedAccounts)\r\n| where not(Computer in (whitelistedComputers) and isempty(todynamic(CommandLine) has_any (suspiciousArgs)))\r\n// Extract process details\r\n| extend ProcessName = tostring(split(NewProcessName, '\\\\')[-1])\r\n| extend IsUnusualParent = not(ParentProcessName has_any(\"cmd.exe\", \"powershell.exe\", \"explorer.exe\", \"wmiprvse.exe\"))\r\n// Add risk indicators\r\n| extend HasSuspiciousArgs = todynamic(CommandLine) has_any (suspiciousArgs)\r\n| extend ExecutionTime = datetime_part(\"hour\", TimeGenerated)\r\n| extend IsNonBusinessHour = ExecutionTime < 7 or ExecutionTime > 19\r\n// Group similar commands\r\n| summarize\r\n    CommandCount = count(),\r\n    UniqueCommands = dcount(CommandLine),\r\n    Commands = make_set(CommandLine, 5),\r\n    LastSeen = max(TimeGenerated),\r\n    FirstSeen = min(TimeGenerated)\r\n    by Computer, Account, SubjectUserName, ProcessName, IsUnusualParent, HasSuspiciousArgs, IsNonBusinessHour\r\n| extend TimeDelta = datetime_diff('minute', LastSeen, FirstSeen)\r\n| extend RiskScore = case(\r\n    HasSuspiciousArgs and IsUnusualParent, \"High\",\r\n    HasSuspiciousArgs or (IsUnusualParent and CommandCount > 2) or (IsNonBusinessHour and CommandCount > 3), \"Medium\",\r\n    \"Low\"\r\n)\r\n| project \r\n    FirstSeen, LastSeen, TimeDelta, RiskScore, \r\n    Computer, Account, SubjectUserName, \r\n    ProcessName, CommandCount, UniqueCommands,\r\n    IsUnusualParent, HasSuspiciousArgs, IsNonBusinessHour,\r\n    Commands\r\n| order by RiskScore, CommandCount desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Discovery"
+                ],
+                "techniques": [
+                    "T1087",
+                    "T1069"
+                ],
+                "subTechniques": [
+                    "T1087.001",
+                    "T1069.001"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "Account"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/ca9cbefb-d525-487a-a33c-16e1ee243a91')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/ca9cbefb-d525-487a-a33c-16e1ee243a91')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Network Discovery Detection",
+                "description": "This detection identifies potential adversarial network mapping and discovery activities.",
+                "severity": "Low",
+                "enabled": true,
+                "query": "SecurityEvent\r\n| where EventID == 4688 \r\n| where (\r\n    CommandLine has \"nmap\" or\r\n    CommandLine has \"ping\" or \r\n    CommandLine has \"tracert\" or \r\n    CommandLine has \"traceroute\" or\r\n    CommandLine has \"netstat\" or\r\n    CommandLine has \"net use\" or\r\n    CommandLine has \"arp -a\" or\r\n    CommandLine has \"Get-NetNeighbor\" or\r\n    CommandLine has \"Get-NetRoute\" or\r\n     CommandLine has \"Test-NetConnection\" or\r\n      CommandLine has \"Invoke-Portscan\" or\r\n    CommandLine has \"Get-NetTCPConnection\"\r\n)\r\n| extend AccountCustomEntity = Account\r\n| extend HostCustomEntity = Computer\r\n| project TimeGenerated, Computer, Account, SubjectUserName, Process, NewProcessName, CommandLine, ParentProcessName",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Discovery",
+                    "CredentialAccess"
+                ],
+                "techniques": [
+                    "T1046",
+                    "T1040"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "Account"
+                            }
+                        ]
+                    },
+                    {
+                        "entityType": "Host",
+                        "fieldMappings": [
+                            {
+                                "identifier": "HostName",
+                                "columnName": "Computer"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/802b08a3-1a97-4c31-824b-4708355e4a52')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/802b08a3-1a97-4c31-824b-4708355e4a52')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Process Discovery Activities Detection",
+                "description": "This query identifies potential adversary process enumeration activities where threat actors are attempting to discover running processes on systems. Process discovery is a common technique used during the reconnaissance phase to identify security tools, potential targets for exploitation, or to understand system activities.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "SecurityEvent\r\n| where EventID == 4688 // Process creation\r\n| where (\r\n    // Process listing commands\r\n    CommandLine has_any(\"tasklist\", \"Get-Process\", \"ps \", \"wmic process\") or \r\n    // PowerShell process-related commands\r\n    (CommandLine has \"powershell\" and CommandLine has_any(\"process\", \"Get-WmiObject Win32_Process\", \"Win32_Process\", \"Get-CimInstance\")) or\r\n    // Additional process discovery tools\r\n    CommandLine has_any(\"qprocess\", \"query process\", \"wmic /node\", \"handle.exe\", \"listdlls.exe\", \"pslist.exe\")\r\n)\r\n// Exclude common administrative contexts\r\n| where not(Account has_any(\"administrator\", \"admin\") and Computer has_any(\"ADMIN-\", \"MGMT-\"))\r\n// Exclude common legitimate automation accounts\r\n| where not(SubjectUserName startswith \"svc_\" and CommandLine has_all(\"powershell\", \"-NonInteractive\"))\r\n| extend ProcessName = tostring(split(NewProcessName, '\\\\')[-1])\r\n| extend AccountCustomEntity = Account\r\n| extend HostCustomEntity = Computer\r\n| extend CommandLineLength = strlen(CommandLine)\r\n| project TimeGenerated, Computer, Account, SubjectUserName, \r\n         Process, ProcessName, NewProcessName, CommandLine, CommandLineLength,\r\n         ParentProcessName, TokenElevationType, SubjectLogonId",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Discovery"
+                ],
+                "techniques": [
+                    "T1057"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "Account"
+                            }
+                        ]
+                    },
+                    {
+                        "entityType": "Host",
+                        "fieldMappings": [
+                            {
+                                "identifier": "FullName",
+                                "columnName": "Computer"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/417683e3-2650-4288-b99c-a0f029b9e815')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/417683e3-2650-4288-b99c-a0f029b9e815')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Registry Query  Detection",
+                "description": "This query detects potential reconnaissance activities where users are querying the Windows registry using reg.exe. Registry queries can be legitimate administrative tasks but are also commonly used by attackers during the discovery phase to identify potential persistence mechanisms, credentials, or system configurations.",
+                "severity": "Low",
+                "enabled": true,
+                "query": "let excludedAccounts = dynamic([\"NT AUTHORITY\\\\SYSTEM\", \"NT AUTHORITY\\\\LOCAL SERVICE\", \"NT AUTHORITY\\\\NETWORK SERVICE\"]);\r\nlet suspiciousRegKeys = dynamic([\r\n    \"HKLM\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\",\r\n    \"HKLM\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\RunOnce\",\r\n    \"HKCU\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\",\r\n    \"HKCU\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\RunOnce\",\r\n    \"HKLM\\\\SYSTEM\\\\CurrentControlSet\\\\Services\",\r\n    \"HKLM\\\\SAM\",\r\n    \"HKLM\\\\SECURITY\",\r\n    \"HKLM\\\\SOFTWARE\\\\Policies\",\r\n    \"HKLM\\\\SOFTWARE\\\\Microsoft\\\\Cryptography\"\r\n]);\r\nSecurityEvent  \r\n| where EventID == 4688 \r\n| where Process =~ \"reg.exe\" \r\n| where CommandLine contains \"query\" \r\n| where Account !in (excludedAccounts)\r\n| extend RegKey = extract(\"(HK[A-Z_]+\\\\\\\\[\\\\\\\\\\\\w]+.*?)( |$)\", 1, CommandLine)\r\n| extend IsSuspiciousKey = RegKey has_any (suspiciousRegKeys)\r\n| extend ExecutionHost = Computer\r\n| project TimeGenerated, Account, SubjectLogonId, ExecutionHost, \r\n         Process, ParentProcessName, CommandLine, RegKey, IsSuspiciousKey\r\n| sort by TimeGenerated desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Discovery"
+                ],
+                "techniques": [
+                    "T1012"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "Account"
+                            }
+                        ]
+                    },
+                    {
+                        "entityType": "Process",
+                        "fieldMappings": [
+                            {
+                                "identifier": "CommandLine",
+                                "columnName": "CommandLine"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/11352750-232e-4842-899b-011f068c40be')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/11352750-232e-4842-899b-011f068c40be')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR -Detect Unusua Machine Logon Patterns",
+                "description": "Detects successful logons (Event ID 4624) for machine accounts with unusual logon types (excluding Network=3 and Service=5).",
+                "severity": "Low",
+                "enabled": true,
+                "query": "SecurityEvent\r\n| where TimeGenerated > ago(100d)  // Last 24 hours (likely typo)\r\n| where EventID == 4624\r\n| where AccountType == \"Machine\"\r\n| where LogonType !in (3, 5)     // Exclude expected machine logon types (3=Network, 5=Service)\r\n| summarize count() by Account, LogonType, Computer, IpAddress\r\n| order by count_ desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "CredentialAccess"
+                ],
+                "techniques": [
+                    "T1003",
+                    "T1558"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "Account"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/91077724-2a6a-4790-a9af-b301bdf44fd1')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/91077724-2a6a-4790-a9af-b301bdf44fd1')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Token Manipulation Detection",
+                "description": "This KQL query detects potential token manipulation activities by identifying patterns of elevated token usage across the environment. It focuses on suspicious authentication events where a user obtains higher privileges than normal while filtering out common legitimate scenarios to minimize false positives.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "SecurityEvent\r\n| where EventID == 4624  \r\n| where ElevatedToken == \"%%1842\" \r\n| where IpAddress !in (\"127.0.0.1\", \"::1\") \r\n| where LogonType !in (3, 10)  // Exclude network (3) and RemoteInteractive (10) logons which are common legitimate scenarios\r\n| where AccountType != \"Machine\"  \r\n| where Account !endswith \"$\" \r\n| where Account !startswith \"NT AUTHORITY\\\\\"  \r\n| where not(Computer startswith \"EXCHANGE\" and Account startswith \"SVC_\")  // Example exclusion for known service patterns\r\n| extend TimeKey = bin(TimeGenerated, 1h)  // Group events by hour windows\r\n| summarize \r\n    LogonCount = count(),\r\n    MinTime = min(TimeGenerated),\r\n    MaxTime = max(TimeGenerated),\r\n    Computers = make_set(Computer, 100),\r\n    IPs = make_set(IpAddress, 100)\r\n    by Account, AccountType, TimeKey, LogonType, TargetUserSid\r\n| where LogonCount > 5 \r\n| extend TimeDiff = datetime_diff('minute', MaxTime, MinTime)\r\n| where TimeDiff < 30  // Focus on bursts of activity within 30 minutes\r\n| project Account, AccountType, LogonCount, LogonType, TimeKey, \r\n         MinTime, MaxTime, TimeDiff, Computers, IPs, TargetUserSid\r\n| order by LogonCount desc",
+                "queryFrequency": "PT5H",
+                "queryPeriod": "PT5H",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "DefenseEvasion",
+                    "PrivilegeEscalation"
+                ],
+                "techniques": [
+                    "T1134"
+                ],
+                "subTechniques": [
+                    "T1134.001"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "Account"
+                            }
+                        ]
+                    },
+                    {
+                        "entityType": "Host",
+                        "fieldMappings": [
+                            {
+                                "identifier": "FullName",
+                                "columnName": "Computers"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/a8dc65b0-0224-4f98-91c8-c99f641539a3')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/a8dc65b0-0224-4f98-91c8-c99f641539a3')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Nltest Discovery Activities",
+                "description": "The windows utility Nltest is known to be used by adversaries to enumerate domain trusts. This detection is based on Windows Security Event 4688 and triggers if more than 3 nltest queries are executed by a user on the same computer within 30 minutes. You can alter the variables yourself to tailor it to your environment.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let NLTestParameters = pack_array(\"dclist\", \"dcname\", \"dsgetdc\", \"dnsgetdc\", \"finduser\", \"domain_trusts\", \"dsquerydns\");\r\nlet BinSize = 30m;\r\nlet Threshold = 3;\r\nSecurityEvent\r\n| where EventID == 4688\r\n| where tolower(CommandLine) has \"nltest.exe\"\r\n| extend ParsedCommandLine = tolower(parse_command_line(CommandLine, \"windows\")[1])\r\n| where ParsedCommandLine has_any (NLTestParameters)\r\n| summarize TotalQueries = count(), TotalUniqueQueries = dcount(CommandLine), Commands = make_set(CommandLine, 100) by Computer, Account, bin(TimeGenerated, BinSize)\r\n| where TotalQueries >= Threshold",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Discovery"
+                ],
+                "techniques": [
+                    "T1482"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "Account"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/9b033d0e-af10-49a3-b50a-eb3535ea4b57')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/9b033d0e-af10-49a3-b50a-eb3535ea4b57')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Windows Event Log Access Tampering Via Registry modification",
+                "description": "This query is designed to detect suspicious modifications to the Windows registry that could indicate tampering with the Windows Event Log system. Specifically, it looks for changes to registry keys related to the Event Log service that end with \"CustomSD\" or \"ChannelAccess\". These keys are important because they control security settings for event logging. By monitoring these changes, the query helps identify potential attempts by attackers to disable or manipulate event logging, which could be used to hide malicious activities or maintain unauthorized access. The query focuses on events where registry values are set, suggesting an active modification attempt.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "DeviceRegistryEvents\r\n| where RegistryKey has_any (\"EventLog\", \"Channels\") and ActionType == \"RegistryValueSet\"\r\n| where RegistryKey endswith \"CustomSD\" or RegistryKey endswith \"ChannelAccess\"\r\n",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "DefenseEvasion"
+                ],
+                "techniques": [
+                    "T1562",
+                    "T1070"
+                ],
+                "subTechniques": [
+                    "T1562.002",
+                    "T1070.001"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Host",
+                        "fieldMappings": [
+                            {
+                                "identifier": "HostName",
+                                "columnName": "DeviceName"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/87b6a412-c1d6-4a3b-9255-5dfb0c98be0a')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/87b6a412-c1d6-4a3b-9255-5dfb0c98be0a')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Psexecsvcpy Detection",
+                "description": "This query is designed to detect the use of a tool called \"psexecsvc.py,\" which is often associated with remote execution activities. Here's a simplified explanation of what the query does:\n\nDefine a Time Frame: The query looks at events that occurred within the last hour (QueryPeriod = 1h).\n\nIdentify Devices with PSEXECSVC File Creation:\n\nIt searches for file events where a file was created in the \\\\ADMIN$ folder.\nSpecifically, it looks for files with names containing \"PSEXECSVC.\"\nIt collects the IDs of devices where such file creation events occurred (DeviceWithPSEXECSVC).\nDetect Service Installation Events:\n\nIt examines service installation events within the same time frame.\nIt checks if the service name in the additional fields contains \"PSEXECSVC\" or if the initiating process's original file name is \"PSEXECSVC1.9.exe.\"\nIt filters these events to only include those occurring on devices identified in the previous step (DeviceWithPSEXECSVC).\nIn essence, the query is looking for evidence of the \"psexecsvc.py\" tool being used on devices by checking for specific file creation and service installation patterns.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let QueryPeriod = 1h;\r\nlet DeviceWithPSEXECSVC =\r\nDeviceFileEvents\r\n| where TimeGenerated> ago(QueryPeriod)\r\n| where FolderPath has \"\\\\ADMIN$\"\r\n| where ActionType == \"FileCreated\"\r\n| where FileName has \"PSEXECSVC\"\r\n| project DeviceId;\r\nDeviceEvents\r\n| where TimeGenerated > ago(QueryPeriod)\r\n| where ActionType == \"ServiceInstalled\"\r\n| where parse_json(AdditionalFields)[\"ServiceName\"] has \"PSEXECSVC\" \r\nor InitiatingProcessVersionInfoOriginalFileName == \"PSEXECSVC1.9.exe\"\r\n| where DeviceId has_any(DeviceWithPSEXECSVC)",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "LateralMovement",
+                    "Execution"
+                ],
+                "techniques": [
+                    "T1569"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": null,
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/2df169a4-92be-4d2c-b360-f1c7bc399253')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/2df169a4-92be-4d2c-b360-f1c7bc399253')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Power Shell Defensive Evasion Detection",
+                "description": "This query is designed to identify potentially suspicious PowerShell commands that are trying to run without being noticed by users. It looks for instances where PowerShell commands include both \"SilentlyContinue\" and \"Start-Process -WindowStyle Hidden\" in their command line. These parameters suggest that the command is attempting to execute in a hidden window and continue silently, which could be indicative of malicious activity. The query searches through device process events to find any such occurrences",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "DeviceProcessEvents\r\n| where ProcessCommandLine has_any(\"SilentlyContinue\",\"Start-Process -WindowStyle Hidden\")",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "DefenseEvasion",
+                    "Execution"
+                ],
+                "techniques": [
+                    "T1027",
+                    "T1059"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Process",
+                        "fieldMappings": [
+                            {
+                                "identifier": "CommandLine",
+                                "columnName": "ProcessCommandLine"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/8b754e33-a821-41ad-b102-69677cb6525e')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/8b754e33-a821-41ad-b102-69677cb6525e')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Detection of Suspicious RunMRU Registry Modifications Related to info Stealers",
+                "description": "This detection rule identifies suspicious modifications to the RunMRU registry key, which stores a history of commands executed via the Windows Run Dialog (`Win + R`). Adversaries, including those deploying Lumma Stealer, may use this technique to execute malicious commands, download payloads, or establish persistence by leveraging commonly abused executables like PowerShell, cmd.exe, rundll32.exe, and pwsh.\n\nAs observed in Lumma Stealer campaigns, attackers may use CAPTCHA-based evasion techniques to distribute malware and execute commands that interact with malicious infrastructure via `iwr`, `https`, and `iex` in PowerShell. Monitoring changes to the RunMRU registry key helps detect malicious activity attempting to execute unauthorized commands or establish persistence through registry manipulation.\n\n- [Lumma Stealer Analysis - Medium](https://medium.com/@shaherzakaria8/downloading-trojan-lumma-infostealer-through-capatcha-1f25255a0e71)",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "DeviceRegistryEvents \r\n| where RegistryKey contains \"Runmru\" \r\n| where RegistryValueData has_any(\"powershell\", \"iwr\", \"https\", \"iex\", \"cmd.exe\", \"rundll\", \"pwsh\")",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Execution",
+                    "Persistence"
+                ],
+                "techniques": [
+                    "T1059",
+                    "T1547"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Name",
+                                "columnName": "DeviceName"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/c973e81d-5a21-4f83-bdbd-338599be1f62')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/c973e81d-5a21-4f83-bdbd-338599be1f62')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Security Event Powershell Empire",
+                "description": "This query is searching for security events with EventID 4688. It filters out events where the ParentProcessName is either \"gc_worker.exe\" or \"gc_service.exe\", or the CommandLine contains a specific encoded command. It then decodes the encoded command and checks if it matches any of the commands in the \"regex_empire\" regular expression. The query returns various fields related to the event, such as TimeGenerated, Computer, Account, Activity, and more.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let regex_empire = @\"SetDelay|GetDelay|Set-LostLimit|Get-LostLimit|Set-Killdate|Get-Killdate|Set-WorkingHours|Get-WorkingHours|Get-Sysinfo|Add-Servers|Invoke-ShellCommand|Start-AgentJob|Update-Profile|Get-FilePart|Encrypt-Bytes|Decrypt-Bytes|Encode-Packet|Decode-Packet|Send-Message|Process-Packet|Process-Tasking|Get-Task|Start-Negotiate|Invoke-DllInjection|Invoke-ReflectivePEInjection|Invoke-Shellcode|Invoke-ShellcodeMSIL|Get-ChromeDump|Get-ClipboardContents|Get-IndexedItem|Get-Keystrokes|Invoke-Inveigh|Invoke-NetRipper|local:Invoke-PatchDll|Invoke-NinjaCopy|Get-Win32Types|Get-Win32Constants|Get-Win32Functions|Sub-SignedIntAsUnsigned|Add-SignedIntAsUnsigned|Compare-Val1GreaterThanVal2AsUInt|Convert-UIntToInt|Test-MemoryRangeValid|Write-BytesToMemory|Get-DelegateType|Get-ProcAddress|Enable-SeDebugPrivilege|Invoke-CreateRemoteThread|Get-ImageNtHeaders|Get-PEBasicInfo|Get-PEDetailedInfo|Import-DllInRemoteProcess|Get-RemoteProcAddress|Copy-Sections|Update-MemoryAddresses|Import-DllImports|Get-VirtualProtectValue|Update-MemoryProtectionFlags|Update-ExeFunctions|Copy-ArrayOfMemAddresses|Get-MemoryProcAddress|Invoke-MemoryLoadLibrary|Invoke-MemoryFreeLibrary|Out-Minidump|Get-VaultCredential|Invoke-DCSync|Translate-Name|Get-NetDomain|Get-NetForest|Get-NetForestDomain|Get-DomainSearcher|Get-NetComputer|Get-NetGroupMember|Get-NetUser|Invoke-Mimikatz|Invoke-PowerDump|Invoke-TokenManipulation|Exploit-JMXConsole|Exploit-JBoss|Invoke-Thunderstruck|Invoke-VoiceTroll|Set-WallPaper|Invoke-PsExec|Invoke-SSHCommand|Invoke-PSInject|Invoke-RunAs|Invoke-SendMail|Invoke-Rule|Get-OSVersion|Select-EmailItem|View-Email|Get-OutlookFolder|Get-EmailItems|Invoke-MailSearch|Get-SubFolders|Get-GlobalAddressList|Invoke-SearchGAL|Get-SMTPAddress|Disable-SecuritySettings|Reset-SecuritySettings|Get-OutlookInstance|New-HoneyHash|Set-MacAttribute|Invoke-PatchDll|Get-SecurityPackages|Install-SSP|Invoke-BackdoorLNK|New-ElevatedPersistenceOption|New-UserPersistenceOption|Add-Persistence|Invoke-CallbackIEX|Add-PSFirewallRules|Invoke-EventLoop|Invoke-PortBind|Invoke-DNSLoop|Invoke-PacketKnock|Invoke-CallbackLoop|Invoke-BypassUAC|Get-DecryptedCpassword|Get-GPPInnerFields|Invoke-WScriptBypassUAC|Get-ModifiableFile|Get-ServiceUnquoted|Get-ServiceFilePermission|Get-ServicePermission|Invoke-ServiceUserAdd|Invoke-ServiceCMD|Write-UserAddServiceBinary|Write-CMDServiceBinary|Write-ServiceEXE|Write-ServiceEXECMD|Restore-ServiceEXE|Invoke-ServiceStart|Invoke-ServiceStop|Invoke-ServiceEnable|Invoke-ServiceDisable|Get-ServiceDetail|Find-DLLHijack|Find-PathHijack|Write-HijackDll|Get-RegAlwaysInstallElevated|Get-RegAutoLogon|Get-VulnAutoRun|Get-VulnSchTask|Get-UnattendedInstallFile|Get-Webconfig|Get-ApplicationHost|Write-UserAddMSI|Invoke-AllChecks|Invoke-ThreadedFunction|Test-Login|Get-UserAgent|Test-Password|Get-ComputerDetails|Find-4648Logons|Find-4624Logons|Find-AppLockerLogs|Find-PSScriptsInPSAppLog|Find-RDPClientConnections|Get-SystemDNSServer|Invoke-Paranoia|Invoke-WinEnum{|Get-SPN|Invoke-ARPScan|Invoke-Portscan|Invoke-ReverseDNSLookup|Invoke-SMBScanner|New-InMemoryModule|Add-Win32Type|Export-PowerViewCSV|Get-MacAttribute|Copy-ClonedFile|Get-IPAddress|Convert-NameToSid|Convert-SidToName|Convert-NT4toCanonical|Get-Proxy|Get-PathAcl|Get-NameField|Convert-LDAPProperty|Get-NetDomainController|Add-NetUser|Add-NetGroupUser|Get-UserProperty|Find-UserField|Get-UserEvent|Get-ObjectAcl|Add-ObjectAcl|Invoke-ACLScanner|Get-GUIDMap|Get-ADObject|Set-ADObject|Get-ComputerProperty|Find-ComputerField|Get-NetOU|Get-NetSite|Get-NetSubnet|Get-DomainSID|Get-NetGroup|Get-NetFileServer|SplitPath|Get-DFSshare|Get-DFSshareV1|Get-DFSshareV2|Get-GptTmpl|Get-GroupsXML|Get-NetGPO|Get-NetGPOGroup|Find-GPOLocation|Find-GPOComputerAdmin|Get-DomainPolicy|Get-NetLocalGroup|Get-NetShare|Get-NetLoggedon|Get-NetSession|Get-NetRDPSession|Invoke-CheckLocalAdminAccess|Get-LastLoggedOn|Get-NetProcess|Find-InterestingFile|Invoke-CheckWrite|Invoke-UserHunter|Invoke-StealthUserHunter|Invoke-ProcessHunter|Invoke-EventHunter|Invoke-ShareFinder|Invoke-FileFinder|Find-LocalAdminAccess|Get-ExploitableSystem|Invoke-EnumerateLocalAdmin|Get-NetDomainTrust|Get-NetForestTrust|Find-ForeignUser|Find-ForeignGroup|Invoke-MapDomainTrust|Get-Hex|Create-RemoteThread|Get-FoxDump|Decrypt-CipherText|Get-Screenshot|Start-HTTP-Server|Local:Invoke-CreateRemoteThread|Local:Get-Win32Functions|Local:Inject-NetRipper|GetCommandLine|ElevatePrivs|Get-RegKeyClass|Get-BootKey|Get-HBootKey|Get-UserName|Get-UserHashes|DecryptHashes|DecryptSingleHash|Get-UserKeys|DumpHashes|Enable-SeAssignPrimaryTokenPrivilege|Enable-Privilege|Set-DesktopACLs|Set-DesktopACLToAllowEveryone|Get-PrimaryToken|Get-ThreadToken|Get-TokenInformation|Get-UniqueTokens|Find-GPOLocation|Find-GPOComputerAdmin|Get-DomainPolicy|Get-NetLocalGroup|Get-NetShare|Get-NetLoggedon|Get-NetSession|Get-NetRDPSession|Invoke-CheckLocalAdminAccess|Get-LastLoggedOn|Get-NetProcess|Find-InterestingFile|Invoke-CheckWrite|Invoke-UserHunter|Invoke-StealthUserHunter|Invoke-ProcessHunter|Invoke-EventHunter|Invoke-ShareFinder|Invoke-FileFinder|Find-LocalAdminAccess|Get-ExploitableSystem|Invoke-EnumerateLocalAdmin|Get-NetDomainTrust|Get-NetForestTrust|Find-ForeignUser|Find-ForeignGroup|Invoke-MapDomainTrust|Get-Hex|Create-RemoteThread|Get-FoxDump|Decrypt-CipherText|Get-Screenshot|Start-HTTP-Server|Local:Invoke-CreateRemoteThread|Local:Get-Win32Functions|Local:Inject-NetRipper|GetCommandLine|ElevatePrivs|Get-RegKeyClass|Get-BootKey|Get-HBootKey|Get-UserName|Get-UserHashes|DecryptHashes|DecryptSingleHash|Get-UserKeys|DumpHashes|Enable-SeAssignPrimaryTokenPrivilege|Enable-Privilege|Set-DesktopACLs|Set-DesktopACLToAllowEveryone|Get-PrimaryToken|Get-ThreadToken|Get-TokenInformation|Get-UniqueTokens|Invoke-ImpersonateUser|Create-ProcessWithToken|Free-AllTokens|Enum-AllTokens|Invoke-RevertToSelf|Set-Speaker\\(\\$Volume\\){\\$wshShell|Local:Get-RandomString|Local:Invoke-PsExecCmd|Get-GPPPassword|Local:Inject-BypassStuff|Local:Invoke-CopyFile\\(\\$sSource,|ind-Fruit|New-IPv4Range|New-IPv4RangeFromCIDR|Parse-Hosts|Parse-ILHosts|Exclude-Hosts|Get-TopPort|Parse-Ports|Parse-IpPorts|Remove-Ports|Write-PortscanOut|Convert-SwitchtoBool|Get-ForeignUser|Get-ForeignGroup|enrollment-token\";\r\nSecurityEvent\r\n| where EventID == 4688\r\n// Consider filtering on filename if perf issues occur\r\n| where  Process in~ (\"powershell.exe\",\"powershell_ise.exe\",\"pwsh.exe\")\r\n| where not(ParentProcessName has_any (\"gc_worker.exe\", \"gc_service.exe\") or CommandLine has \"IABbAEUAbgB2AGkAcgBvAG4AbQBlAG4AdABdADoAOgBPAFMAVgBlAHIAcwBpAG8AbgAuAFYAZQByAHMAaQBvAG4AIAA=\")\r\n| where CommandLine has \"-EncodedCommand\"\r\n| parse kind=regex flags=i CommandLine with * \"-EncodedCommand \" EncodedCommand\r\n| extend EncodedCommand = tostring(split(EncodedCommand, \" \")[0])\r\n| extend DecodedCommand = translate('\\0', '', base64_decode_tostring(EncodedCommand))\r\n// There might be second encoded command (cmd > powershell)\r\n// | parse kind=regex flags=i DecodedCommand with * \"-EncodedCommand \" SecondEncodedCommand\r\n// | extend SecondEncodedCommand = tostring(split(SecondEncodedCommand, \" \")[0])\r\n// | extend SecondDecodedCommand = translate('\\0','', base64_decode_tostring(SecondEncodedCommand))\r\n| extend EffectiveCommand = case(\r\n    //isnotempty(SecondEncodedCommand), SecondDecodedCommand,\r\n    isnotempty(EncodedCommand), DecodedCommand,\r\n    CommandLine\r\n    )\r\n| where EffectiveCommand matches regex regex_empire\r\n| project\r\n    TimeGenerated,\r\n    Computer,\r\n    Account,\r\n    AccountType,\r\n    Activity,\r\n    ParentProcessName,\r\n    NewProcessName,\r\n    CommandLine,\r\n    EffectiveCommand,\r\n    TargetAccount,\r\n    SubjectLogonId,\r\n    TargetLogonId,\r\n    TokenElevationType",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Execution",
+                    "DefenseEvasion"
+                ],
+                "techniques": [
+                    "T1059",
+                    "T1548"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": null,
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/1bf6e165-5e32-420e-ab4f-0da8558a8be2')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/1bf6e165-5e32-420e-ab4f-0da8558a8be2')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "Potential Build Process Compromise - MDE",
+                "description": "The query looks for source code files being modified immediately after a build process is started. The purpose of this is to look for malicious code injection during the build process. This query uses Microsoft Defender for Endpoint telemetry.\nMore details: https://techcommunity.microsoft.com/t5/azure-sentinel/monitoring-the-software-supply-chain-with-azure-sentinel/ba-p/2176463",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "// How far back to look for events from\nlet timeframe = 1d;\n// How close together build events and file modifications should occur to alert (make this smaller to reduce FPs)\nlet time_window = 5m;\n// Edit this to include build processes used\nlet build_processes = dynamic([\"MSBuild.exe\", \"dotnet.exe\", \"VBCSCompiler.exe\"]);\n// Include any processes that you want to allow to edit files during/around the build process\nlet allow_list = dynamic([]);\nDeviceProcessEvents\n| where TimeGenerated > ago(timeframe)\n// Look for build process starts\n| where FileName has_any (build_processes)\n| summarize by BuildParentProcess=InitiatingProcessFileName, BuildProcess=FileName, BuildAccount = AccountName, DeviceName, BuildCommand=ProcessCommandLine, \ntimekey= bin(TimeGenerated, time_window), BuildProcessTime=TimeGenerated\n| join kind=inner(\nDeviceFileEvents\n| where TimeGenerated > ago(timeframe)\n| where InitiatingProcessFileName !in (allow_list)\n| where ActionType == \"FileCreated\"  or ActionType == \"FileModified\"\n// Look for code files, edit this to include file extensions used in build.\n| where FileName endswith \".cs\" or FileName endswith \".cpp\"\n| summarize by FileEditParentProcess=InitiatingProcessParentFileName, FileEditAccount = InitiatingProcessAccountName, FileEditDomain = InitiatingProcessAccountDomain, FileEditUpn = InitiatingProcessAccountUpn, \nDeviceName, FileEdited=FileName, FileEditProcess=InitiatingProcessFileName, timekey= bin(TimeGenerated, time_window), FileEditTime=TimeGenerated)\n// join where build processes and file modifications seen at same time on same host\non timekey, DeviceName\n// Limit to only where the file edit happens after the build process starts\n| where BuildProcessTime <= FileEditTime\n| summarize make_set(FileEdited), make_set(FileEditProcess) by timekey, DeviceName, BuildParentProcess, BuildProcess, FileEditAccount, FileEditDomain, FileEditUpn\n| extend HostName = tostring(split(DeviceName, \".\")[0]), DomainIndex = toint(indexof(DeviceName, '.'))\n| extend HostNameDomain = iff(DomainIndex != -1, substring(DeviceName, DomainIndex + 1), DeviceName)\n",
+                "queryFrequency": "P1D",
+                "queryPeriod": "P1D",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT1H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Persistence"
+                ],
+                "techniques": [
+                    "T1554"
+                ],
+                "subTechniques": [],
+                "alertRuleTemplateName": "1bf6e165-5e32-420e-ab4f-0da8558a8be2",
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5M",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": null,
+                        "groupByCustomDetails": null
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Host",
+                        "fieldMappings": [
+                            {
+                                "identifier": "HostName",
+                                "columnName": "HostName"
+                            },
+                            {
+                                "identifier": "DnsDomain",
+                                "columnName": "HostNameDomain"
+                            }
+                        ]
+                    },
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "FullName",
+                                "columnName": "FileEditUpn"
+                            },
+                            {
+                                "identifier": "Name",
+                                "columnName": "FileEditAccount"
+                            },
+                            {
+                                "identifier": "UPNSuffix",
+                                "columnName": "FileEditDomain"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": "1.1.0"
+            }
+        }
+    ]
+}
