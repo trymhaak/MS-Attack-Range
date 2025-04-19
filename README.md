@@ -36,3 +36,7 @@ From the files you've provided, here's how the solution is structured:
 - attack-range.py as the main control interface
 - Commands for building, destroying, and updating the infrastructure
 - Functions to run individual attacks or attack sequences
+
+![image](https://github.com/user-attachments/assets/fc084318-da2c-46a0-91c3-3c09899ee775)
+Time for the real fun begins!
+  
