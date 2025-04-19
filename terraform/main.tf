@@ -62,7 +62,7 @@ resource "azurerm_monitor_data_collection_rule" "dcr" {
 
   data_sources {
     windows_event_log {
-      streams = ["Microsoft-Event", "Microsoft-WindowsEvent"]
+      streams = ["Microsoft-Event", "Microsoft-SecurityEvent"]
       name    = "security-logs"
       x_path_queries = [
         "Security!*",
@@ -74,7 +74,7 @@ resource "azurerm_monitor_data_collection_rule" "dcr" {
   }
 
   data_flow {
-    streams      = ["Microsoft-WindowsEvent"]
+    streams      = ["Microsoft-SecurityEvent"]
     destinations = ["law"]
   }
 }
