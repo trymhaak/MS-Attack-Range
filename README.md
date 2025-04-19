@@ -10,15 +10,10 @@ Deploy a complete Azure infrastructure using Terraform
 - Run attack simulations based on MITRE ATT&CK techniques
 - Test detection capabilities in Microsoft Sentinel
 
-![image](https://github.com/user-attachments/assets/fc084318-da2c-46a0-91c3-3c09899ee775)
-Time for the real fun begins!
-
-
-# Microsoft Sentinel Attack Range
-
 A modular and automated deployment solution for setting up and testing Microsoft Sentinel detection capabilities against simulated attack scenarios.
 
-![Architecture Diagram](architecture_diagram.png)
+![image](https://github.com/user-attachments/assets/0bdb9e6a-1371-461c-9411-c89ae4b31dba)
+
 
 ## Overview
 
@@ -46,7 +41,7 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
 - Terraform 1.0.0+
 - Python 3.7+
 - Ansible 2.9+
-- Azure CLI
+- Azure CLI (for newbie)
 - SSH key pair for accessing Linux machines
 - At least 12 vCPUs available in your subscription for the VMs
 
