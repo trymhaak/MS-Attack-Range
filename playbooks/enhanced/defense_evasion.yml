@@ -1,0 +1,66 @@
+---
+- name: Enhanced Defense Evasion Techniques
+  hosts: windows
+  gather_facts: yes
+  vars:
+    attack_log_dir: "C:\\AttackSimulation\\DefenseEvasion"
+  tasks:
+    - name: Create attack log directory
+      win_file:
+        path: "{{ attack_log_dir }}"
+        state: directory
+
+    - name: Simulate Defense Evasion Chain
+      win_shell: |
+        Write-Host "[+] Starting defense evasion chain simulation"
+        Write-Host "[+] MITRE ATT&CK: T1562, T1070, T1218"
+        Write-Host "[+] Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        
+        $attackLogDir = "{{ attack_log_dir }}"
+        
+        # Test 1: Disable Windows Defender
+        Write-Host "`n=== Test 1: Windows Defender Tampering ==="
+        try {
+            Write-Host "Simulating Defender tampering (no actual changes)"
+            Write-Host "Command simulation: Set-MpPreference -DisableRealtimeMonitoring $true"
+            Write-Host "Command simulation: Set-MpPreference -DisableIOAVProtection $true"
+        } catch {
+            Write-Host "Access denied - this is expected"
+        }
+        
+        # Test 2: Clear Windows Event Logs
+        Write-Host "`n=== Test 2: Event Log Clearing ==="
+        $logsToClear = @("Application", "Security", "System")
+        foreach ($log in $logsToClear) {
+            Write-Host "Simulating clear of $log log"
+            Write-Host "Command simulation: wevtutil.exe cl $log"
+        }
+        
+        # Test 3: Timestomping simulation
+        Write-Host "`n=== Test 3: Timestomp Simulation ==="
+        $testFile = "$attackLogDir\timestomp_test.txt"
+        Set-Content -Path $testFile -Value "Timestomp test file"
+        $originalTime = (Get-Item $testFile).LastWriteTime
+        Write-Host "Original timestamp: $originalTime"
+        
+        try {
+            $newTime = Get-Date "2023-01-01 12:00:00"
+            Set-ItemProperty -Path $testFile -Name LastWriteTime -Value $newTime
+            Write-Host "New timestamp: $((Get-Item $testFile).LastWriteTime)"
+            Set-ItemProperty -Path $testFile -Name LastWriteTime -Value $originalTime
+        } catch {
+            Write-Host "Error modifying timestamp"
+        }
+        
+        # Save results
+        $results = @{
+            "TestTimestamp" = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            "AttemptedDefenderDisable" = $true
+            "SimulatedLogClearing" = $logsToClear
+            "TimestompTest" = $testFile
+        }
+        
+        $results | ConvertTo-Json | Out-File "$attackLogDir\defense_evasion_results.json"
+        Write-Host "`n[+] Defense evasion simulation completed"
+      register: defense_evasion_results
+      ignore_errors: yes
