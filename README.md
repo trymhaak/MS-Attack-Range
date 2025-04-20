@@ -79,6 +79,9 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
    # Run a predefined attack sequence
    python attack-range.py sequence -s recon
    
+   # Run full attack simulation
+   python attack-range.py sequence -s full_attack_simulation
+   
    # Run an individual attack
    python attack-range.py attack -a network_discovery
    ```
