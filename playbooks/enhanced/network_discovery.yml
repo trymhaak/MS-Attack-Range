@@ -1,1 +1,49 @@
+---
+- name: Enhanced Network Discovery
+  hosts: linux
+  gather_facts: yes
+  vars:
+    attack_log_dir: "/tmp/attack_simulation/network_discovery"
+  tasks:
+    - name: Create attack log directory
+      file:
+        path: "{{ attack_log_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Advanced Network Scanning
+      shell: |
+        echo "[+] Starting advanced network discovery"
+        echo "[+] MITRE ATT&CK: T1046 - Network Service Scanning"
+        echo "[+] Time: $(date '+%Y-%m-%d %H:%M:%S')"
+        
+        # TCP SYN scan with service version detection
+        nmap -sS -sV -p- --top-ports 1000 {{ target_ip }} -oN {{ attack_log_dir }}/tcp_syn_scan.txt
+        
+        # UDP scan for common services
+        nmap -sU --top-ports 100 {{ target_ip }} -oN {{ attack_log_dir }}/udp_scan.txt
+        
+        # OS detection
+        nmap -O {{ target_ip }} -oN {{ attack_log_dir }}/os_detection.txt
+        
+        # NSE scripts for vulnerability detection
+        nmap --script vuln {{ target_ip }} -oN {{ attack_log_dir }}/vuln_scan.txt
+        
+        # Generate summary report
+        echo "=== Network Discovery Summary ===" > {{ attack_log_dir }}/summary.txt
+        echo "Open TCP Ports:" >> {{ attack_log_dir }}/summary.txt
+        grep -E "^[0-9]+/tcp.*open" {{ attack_log_dir }}/tcp_syn_scan.txt >> {{ attack_log_dir }}/summary.txt
+        echo -e "\nDetected Services:" >> {{ attack_log_dir }}/summary.txt
+        grep -E "^[0-9]+/tcp.*open.*[A-Za-z]+" {{ attack_log_dir }}/tcp_syn_scan.txt >> {{ attack_log_dir }}/summary.txt
+        echo -e "\nOS Detection Results:" >> {{ attack_log_dir }}/summary.txt
+        grep "Running" {{ attack_log_dir }}/os_detection.txt >> {{ attack_log_dir }}/summary.txt
+        
+        cat {{ attack_log_dir }}/summary.txt
+      register: network_scan_results
+      ignore_errors: yes
+
+    - name: Save scan results
+      copy:
+        content: "{{ network_scan_results.stdout }}"
+        dest: "{{ attack_log_dir }}/scan_results.log"
 
