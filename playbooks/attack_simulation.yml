@@ -1,13 +1,18 @@
 ---
-- name: Linux Attack Simulation
-  hosts: linux
+- name: Main Attack Simulation
+  hosts: all
+  gather_facts: yes
   tasks:
-    - name: Run Network Scanning
+    - name: Include enhanced playbooks based on simulation type
+      include_tasks: "enhanced/{{ simulation_type }}.yml"
+      when: simulation_type in ['network_discovery', 'credential_access', 'persistence', 'defense_evasion', 'lateral_movement', 'exfiltration', 'impact']
+
+    - name: Run Network Scanning (existing functionality)
       shell: |
         nmap -sS -p 80,443,3389,22 {{ target_ip }}
       when: simulation_type == "network_scan"
 
-    - name: Attempt Brute Force
+    - name: Attempt Brute Force (existing functionality)
       shell: |
         hydra -l administrator -P /usr/share/wordlists/rockyou.txt {{ target_ip }} rdp -t 1
       when: simulation_type == "brute_force"
