@@ -8,6 +8,194 @@
     },
     "resources": [
         {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/d91aaf5b-7ab4-4375-b2b1-eb42f2a446aa')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/d91aaf5b-7ab4-4375-b2b1-eb42f2a446aa')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Enhanced Network Scanning Detection",
+                "description": "Adversaries may scan network services to identify open ports, services, or vulnerabilities for further exploitation. This rule detects such scanning behavior by monitoring command-line patterns and syslog messages associated with tools like nmap or masscan",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "\r\nlet timeframe = 5m;\r\nlet scan_threshold = 10;\r\nlet port_scan_patterns = dynamic([\"-sS\", \"-sU\", \"-sV\", \"-sA\", \"nmap\", \"masscan\"]);\r\nunion SecurityEvent, Syslog\r\n| where TimeGenerated > ago(timeframe)\r\n| where (\r\n    (EventID == 4688 and CommandLine has_any (port_scan_patterns)) or\r\n    (SyslogMessage has_any (port_scan_patterns))\r\n)\r\n| extend \r\n    Scanner = case(\r\n        isnotempty(Account), Account,\r\n        isnotempty(Computer), Computer,\r\n        isnotempty(HostName), HostName,\r\n        \"Unknown\"\r\n    ),\r\n    ScanType = case(\r\n        CommandLine has \"-sS\" or SyslogMessage has \"-sS\", \"SYN Scan\",\r\n        CommandLine has \"-sU\" or SyslogMessage has \"-sU\", \"UDP Scan\",\r\n        CommandLine has \"-sV\" or SyslogMessage has \"-sV\", \"Version Scan\",\r\n        CommandLine has \"-sA\" or SyslogMessage has \"-sA\", \"ACK Scan\",\r\n        \"Unknown Scan Type\"\r\n    )\r\n| summarize \r\n    ScanCount = count(),\r\n    TargetIPs = make_set(iff(CommandLine has \"nmap\", extract(\"nmap.*?([0-9.]+)\", 1, CommandLine), \"\")),\r\n    ScanCommands = make_set(CommandLine),\r\n    FirstScan = min(TimeGenerated),\r\n    LastScan = max(TimeGenerated)\r\n    by Scanner, ScanType, bin(TimeGenerated, timeframe)\r\n| where ScanCount > scan_threshold\r\n| extend \r\n    TotalDuration = datetime_diff('second', LastScan, FirstScan),\r\n    MITRETechnique = \"T1046 - Network Service Scanning\"\r\n| project-reorder TimeGenerated, Scanner, ScanType, ScanCount, TargetIPs, TotalDuration, MITRETechnique",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Discovery"
+                ],
+                "techniques": [],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "IP",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Address",
+                                "columnName": "TargetIPs"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/82023f6d-2ddd-4583-9459-38533bae4061')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/82023f6d-2ddd-4583-9459-38533bae4061')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Enhanced Credential Access Detection",
+                "description": "Adversaries may attempt to extract credentials from operating system components like LSASS, SAM, or SECURITY registry hives using tools like mimikatz or commands targeting sensitive processes. This rule identifies such activities by analyzing process creation events (EventID 4688) for suspicious processes or command-line patterns.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let timeframe = 10m;\r\nlet suspicious_processes = dynamic([\"mimikatz\", \"procdump\", \"gsecdump\", \"wce.exe\"]);\r\nlet credential_access_commands = dynamic([\r\n    \"sekurlsa::\", \"lsadump::\", \"kerberos::\", \"privilege::debug\",\r\n    \"/ma lsass\", \"comsvcs.dll\", \"MiniDump\", \"dump HKLM\\\\SAM\", \"dump HKLM\\\\SECURITY\"\r\n]);\r\nSecurityEvent\r\n| where TimeGenerated > ago(timeframe)\r\n| where EventID == 4688  // Process creation\r\n| where (\r\n    NewProcessName has_any (suspicious_processes) or\r\n    CommandLine has_any (credential_access_commands) or\r\n    (NewProcessName endswith \"rundll32.exe\" and CommandLine has \"comsvcs.dll\")\r\n)\r\n| extend \r\n    AttackType = case(\r\n        CommandLine has \"lsass\" or CommandLine has \"procdump\", \"LSASS Memory Dump\",\r\n        CommandLine has \"sekurlsa\" or CommandLine has \"mimikatz\", \"Mimikatz Usage\",\r\n        CommandLine has \"HKLM\\\\SAM\" or CommandLine has \"HKLM\\\\SECURITY\", \"Registry Credential Access\",\r\n        \"Unknown Credential Access\"\r\n    ),\r\n    RiskLevel = case(\r\n        CommandLine has \"mimikatz\" or CommandLine has \"lsass\", \"High\",\r\n        CommandLine has \"HKLM\\\\SAM\" or CommandLine has \"HKLM\\\\SECURITY\", \"Medium\",\r\n        \"Low\"\r\n    )\r\n| summarize \r\n    AttemptCount = count(),\r\n    UniqueUsers = dcount(Account),\r\n    Commands = make_set(CommandLine),\r\n    FirstAttempt = min(TimeGenerated),\r\n    LastAttempt = max(TimeGenerated)\r\n    by Computer, AttackType, RiskLevel, bin(TimeGenerated, timeframe)\r\n| extend \r\n    MITRETechnique = \"T1003 - OS Credential Dumping\",\r\n    AlertDescription = strcat(\"Potential credential access detected: \", AttackType)\r\n| project-reorder TimeGenerated, Computer, AttackType, RiskLevel, AttemptCount, AlertDescription, MITRETechnique",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "CredentialAccess"
+                ],
+                "techniques": [],
+                "subTechniques": [],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Host",
+                        "fieldMappings": [
+                            {
+                                "identifier": "HostName",
+                                "columnName": "Computer"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/05c1fa45-b6b9-49a8-bbea-48ac59149e50')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/05c1fa45-b6b9-49a8-bbea-48ac59149e50')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "AR - Multi-Persistence Detection",
+                "description": "Adversaries may establish persistence by modifying registry run keys, creating scheduled tasks, or installing new services to execute malicious code at system startup or login. This rule detects such activities by analyzing command-line patterns in process creation events for indicators like reg add, schtasks /create, or sc create.",
+                "severity": "Medium",
+                "enabled": true,
+                "query": "let timeframe = 15m;\r\nlet persistence_indicators = dynamic([\r\n    \"New-ItemProperty\", \"reg add\", \r\n    \"schtasks /create\", \"New-ScheduledTask\",\r\n    \"sc create\", \"New-Service\", \r\n    \"HKCU:\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\",\r\n    \"HKLM:\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\"\r\n]);\r\nSecurityEvent\r\n| where TimeGenerated > ago(timeframe)\r\n| where EventID == 4688\r\n| where CommandLine has_any (persistence_indicators)\r\n| extend \r\n    PersistenceType = case(\r\n        CommandLine has_any (\"Run\", \"RunOnce\"), \"Registry Run Keys\",\r\n        CommandLine has_any (\"schtasks\", \"ScheduledTask\"), \"Scheduled Task\",\r\n        CommandLine has_any (\"sc create\", \"New-Service\"), \"Service Creation\",\r\n        CommandLine has_any (\"Startup\", \"StartMenu\"), \"Startup Folder\",\r\n        \"Unknown Persistence\"\r\n    ),\r\n    TargetPath = extract(@\"(HK[LCU][A-Z_]+\\\\[^\\\"\"\\s]+)\", 1, CommandLine),\r\n    TaskName = extract(@\"(?:\\/tn|TaskName)\\s+[\\\"\"]?([^\\\"\"\\s]+)\", 1, CommandLine),\r\n    ServiceName = extract(@\"(?:\\/name|ServiceName)\\s+[\\\"\"]?([^\\\"\"\\s]+)\", 1, CommandLine)\r\n| summarize \r\n    PersistenceAttempts = count(),\r\n    UniqueUsers = dcount(Account),\r\n    UniquePersistenceTypes = make_set(PersistenceType),\r\n    Commands = make_set(CommandLine),\r\n    FirstAttempt = min(TimeGenerated),\r\n    LastAttempt = max(TimeGenerated)\r\n    by Computer, bin(TimeGenerated, timeframe)\r\n| where PersistenceAttempts > 1\r\n| extend \r\n    MITRETechniques = \"T1547.001, T1053.005, T1543.003\",\r\n    Severity = case(\r\n        PersistenceAttempts > 5, \"High\",\r\n        PersistenceAttempts > 2, \"Medium\",\r\n        \"Low\"\r\n    )\r\n| project-reorder TimeGenerated, Computer, PersistenceAttempts, UniquePersistenceTypes, Severity, MITRETechniques",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "Persistence",
+                    "PrivilegeEscalation",
+                    "Execution"
+                ],
+                "techniques": [
+                    "T1547",
+                    "T1053",
+                    "T1543"
+                ],
+                "subTechniques": [
+                    "T1053.005"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": null,
+                "entityMappings": [
+                    {
+                        "entityType": "Host",
+                        "fieldMappings": [
+                            {
+                                "identifier": "HostName",
+                                "columnName": "Computer"
+                            }
+                        ]
+                    },
+                    {
+                        "entityType": "Process",
+                        "fieldMappings": [
+                            {
+                                "identifier": "CommandLine",
+                                "columnName": "Commands"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        },
+        {
             "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/25a4ac0c-0b12-41d8-af6c-89c9e88afd87')]",
             "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/25a4ac0c-0b12-41d8-af6c-89c9e88afd87')]",
             "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
