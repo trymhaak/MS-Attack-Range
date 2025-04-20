@@ -5,7 +5,7 @@ variable "prefix" {
 
 variable "location" {
   description = "Azure region"
-  default     = "eastus"
+  default     = "uksouth"
 }
 
 variable "resource_group_name" {
@@ -26,4 +26,10 @@ variable "admin_password" {
 variable "ssh_public_key" {
   description = "SSH public key for Linux VMs"
   type        = string
+}
+
+variable "allowed_ip" {
+  description = "IP address allowed to connect to the Attack Range"
+  type        = string
+  default     = "0.0.0.0/0"
 }
