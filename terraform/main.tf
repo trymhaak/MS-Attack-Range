@@ -77,6 +77,7 @@ resource "azurerm_monitor_data_collection_rule" "dcr" {
     streams      = ["Microsoft-SecurityEvent"]
     destinations = ["law"]
   }
+depends_on = [azurerm_log_analytics_workspace.law, azurerm_sentinel_log_analytics_workspace_onboarding.sentinel]
 }
 
 resource "azurerm_monitor_data_collection_rule" "dcr_linux" {
