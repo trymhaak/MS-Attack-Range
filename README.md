@@ -49,12 +49,11 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
 
 ![image](https://github.com/user-attachments/assets/213c3625-e8ab-46eb-8360-866dbc26c94a)
 
-
 ## Quick Start
 
 1. **Clone the repository**
    ```
-   git clone https://github.com/oloruntolaallbert/MS-Attack-Range
+   git clone https://github.com/yourusername/ms-attack-range.git
    cd ms-attack-range
    ```
 
@@ -66,11 +65,6 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
 3. **Configure your deployment**
    - Edit `terraform/terraform.tfvars` with your specific settings
    - Edit `attack-range.yml` to configure attack scenarios
-     
-**Security Considerations:**
-- Change default passwords in terraform.tfvars before deployment
-- The current NSG allows RDP (3389) and SSH (22) from any source - restrict to specific IPs
-- Rotate SSH keys periodically
 
 4. **Build the attack range**
    ```
@@ -81,9 +75,6 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
    ```
    # Run a predefined attack sequence
    python attack-range.py sequence -s recon
-   
-   # Run full attack simulation
-   python attack-range.py sequence -s full_attack_simulation
    
    # Run an individual attack
    python attack-range.py attack -a network_discovery
@@ -110,12 +101,20 @@ The attack range supports various MITRE ATT&CK techniques:
 
 | Category | Supported Techniques |
 |----------|----------------------|
-| Discovery | Process Discovery, Network Discovery, Account Discovery, System Info Discovery |
-| Credential Access | Credential Dumping, Brute Force, Mimikatz |
+| Discovery | Process Discovery, Network Discovery, Account Discovery, System Info Discovery, Advanced Network Discovery |
+| Credential Access | Credential Dumping, Brute Force, Mimikatz, Credential Vault Access |
 | Execution | PowerShell, Command Shell, Scheduled Tasks |
-| Persistence | Registry Run Keys, Scheduled Tasks, Startup Folder |
-| Defense Evasion | Timestomp, Clear Logs, Disable Defender |
-| Network | Network Scanning, Port Scanning, SMB Scanning |
+| Persistence | Registry Run Keys, Scheduled Tasks Persistence, Startup Folder, Multi Persistence |
+| Defense Evasion | Timestomp, Clear Logs, Disable Defender, Defense Evasion Chain |
+| Network | Network Scanning, Port Scanning, SMB Scanning, Lateral Movement Scan |
+| Collection | Data Staging |
+| Exfiltration | Exfiltration Attempt |
+| Impact | Impact Simulation |
+
+To list all available attack types, run:
+```
+python attack-range.py attack
+```
 
 ## Attack Sequences
 
@@ -126,24 +125,38 @@ Pre-configured attack sequences are available:
 - **persistence**: Techniques for maintaining access
 - **full_chain**: Complete attack chain simulation
 - **cross_platform**: Attacks targeting both Windows and Linux
-- **network_recon**: Network-based discovery techniques
+- **enhanced_recon**: Advanced discovery operations
+- **advanced_persistence**: Sophisticated persistence mechanisms
+- **full_attack_simulation**: Comprehensive multi-stage attack
+
+To list all available sequences, run:
+```
+python attack-range.py sequence
+```
 
 ## Analytics Rules
 
-The deployment includes pre-configured Microsoft Sentinel analytics rules for detecting:
+The deployment includes 20+ pre-configured Microsoft Sentinel analytics rules covering a wide range of attack techniques including:
 
 - Brute force attempts
-- Credential dumping
+- Credential dumping and theft
 - Suspicious PowerShell execution
 - Scheduled task creation
 - Registry persistence
-- Process discovery
-- Log clearing
-- Network discovery
+- Process and account discovery
+- Log clearing and tampering
+- Network reconnaissance
+- Defense evasion techniques
+- Security tool manipulation
+- Data exfiltration attempts
+
+These rules are deployed automatically through the Terraform deployment, using an ARM template that configures all detection logic, query periods, and entity mappings.
 
 ## Security Note
 
 This project creates intentionally vulnerable environments for security testing. Always deploy in isolated environments and never connect to production networks or use production credentials.
+
+**Important**: Microsoft Defender for Endpoint (MDE) is intentionally disabled on the VMs in this environment to allow attack simulations to run successfully. In a production environment, you would never want to disable these protections. The VMs are tagged with `Defender-Off = true` to indicate this configuration. The attack techniques used would typically be blocked by properly configured security tools.
 
 ## Contributing
 
@@ -151,11 +164,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
 - Inspired by the [Splunk Attack Range](https://github.com/splunk/attack_range)
 - Uses [Atomic Red Team](https://github.com/redcanaryco/atomic-red-team) for attack simulation
 - Built with Terraform, Ansible, and Python
-  
