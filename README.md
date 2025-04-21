@@ -46,7 +46,9 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
 - At least 12 vCPUs available in your subscription for the VMs
 
 
-![image](https://github.com/user-attachments/assets/e8af7c7e-1c56-45a0-a2b3-150015d3e97e)
+
+![image](https://github.com/user-attachments/assets/213c3625-e8ab-46eb-8360-866dbc26c94a)
+
 
 ## Quick Start
 
