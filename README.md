@@ -46,6 +46,7 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
 - At least 12 vCPUs available in your subscription for the VMs
 
   If you're using a service principal for deployment, ensure it has these role assignments.
+![image](https://github.com/user-attachments/assets/e8af7c7e-1c56-45a0-a2b3-150015d3e97e)
 
 ## Quick Start
 
