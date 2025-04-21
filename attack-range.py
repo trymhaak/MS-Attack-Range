@@ -49,37 +49,126 @@ class AzureAttackRange:
             print(f"Error parsing configuration file: {e}")
             sys.exit(1)
 
+    def format_duration(self, seconds):
+        """Format duration in human-readable format"""
+        if seconds < 60:
+            return f"{seconds:.1f}s"
+        elif seconds < 3600:
+            minutes = seconds / 60
+            return f"{minutes:.1f}m"
+        else:
+            hours = seconds / 3600
+            return f"{hours:.1f}h"
+
     def build(self):
         """Build the complete attack range infrastructure"""
-        self.core.build()
+        print("[+] Building Azure Attack Range infrastructure...")
+        start_time = time.time()
+        
+        result = self.core.build()
+        
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        if result:
+            print(f"[+] Infrastructure built successfully")
+            print(f"[+] Completed in {self.format_duration(duration)}")
+        else:
+            print("Error: Infrastructure build failed")
+            sys.exit(1)
 
     def destroy(self):
         """Destroy the complete attack range infrastructure"""
-        self.core.destroy()
+        print("[+] Destroying Azure Attack Range infrastructure...")
+        start_time = time.time()
+        
+        result = self.core.destroy()
+        
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        if result:
+            print(f"[+] Infrastructure destroyed successfully")
+            print(f"[+] Completed in {self.format_duration(duration)}")
+        else:
+            print("Error: Infrastructure destruction failed")
+            sys.exit(1)
 
     def update(self):
         """Update the infrastructure with new resources"""
-        self.core.update()
+        print("[+] Updating Azure Attack Range infrastructure...")
+        start_time = time.time()
+        
+        result = self.core.update()
+        
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        if result:
+            print(f"[+] Infrastructure updated successfully")
+            print(f"[+] Completed in {self.format_duration(duration)}")
+        else:
+            print("Error: Infrastructure update failed")
+            sys.exit(1)
 
     def create_ansible_inventory(self):
         """Create Ansible inventory file with VM information"""
-        return self.core.create_ansible_inventory()
+        print("[+] Creating Ansible inventory file...")
+        start_time = time.time()
+        
+        result = self.core.create_ansible_inventory()
+        
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        if result:
+            print(f"[+] Ansible inventory created successfully")
+            print(f"[+] Completed in {self.format_duration(duration)}")
+        else:
+            print("Error: Failed to create Ansible inventory")
+        
+        return result
     
     def run_attack(self, attack_type, target=None):
         """Run individual attack"""
+        print(f"[+] Running {attack_type} attack simulation...")
+        start_time = time.time()
+        
         if not self.create_ansible_inventory():
             print("Error: Failed to create Ansible inventory")
             return False
         
-        return self.attack_executor.run_attack(attack_type, target)
+        result = self.attack_executor.run_attack(attack_type, target)
+        
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        if result:
+            print(f"[+] Attack {attack_type} completed successfully")
+            print(f"[+] Completed in {self.format_duration(duration)}")
+        else:
+            print(f"Error: Attack {attack_type} failed")
+        
+        return result
 
     def run_attack_sequence(self, sequence_name):
         """Run a predefined attack sequence"""
+        print(f"[+] Starting attack sequence: {sequence_name}")
+        start_time = time.time()
+        
         if not self.create_ansible_inventory():
             print("Error: Failed to create Ansible inventory")
             return False
         
-        return self.attack_executor.run_attack_sequence(sequence_name)
+        result = self.attack_executor.run_attack_sequence(sequence_name)
+        
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        print(f"[+] Attack sequence {sequence_name} completed")
+        print(f"[+] Completed in {self.format_duration(duration)}")
+        
+        return result
 
 def main():
     parser = argparse.ArgumentParser(description='Azure Attack Range')
