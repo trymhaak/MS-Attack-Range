@@ -167,6 +167,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 Albert [x](https://x.com/x_Timileyin)
+Blog [Medium](https://medium.com/cybrush-entity-enrichment-in-microsoft-sentinel/building-a-microsoft-sentinel-attack-range-for-security-testing-6cc983b4b690) 
 ## Acknowledgments
 
 - Inspired by the [Splunk Attack Range](https://github.com/splunk/attack_range)
