@@ -12,7 +12,8 @@ Deploy a complete Azure infrastructure using Terraform
 
 A modular and automated deployment solution for setting up and testing Microsoft Sentinel detection capabilities against simulated attack scenarios.
 
-![image](https://github.com/user-attachments/assets/0bdb9e6a-1371-461c-9411-c89ae4b31dba)
+![image](https://github.com/user-attachments/assets/e2a6bb02-04aa-4abf-9732-ec6a56504b36)
+
 
 
 ## Overview
@@ -165,7 +166,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
+Albert [x](https://x.com/x_Timileyin)
 ## Acknowledgments
 
 - Inspired by the [Splunk Attack Range](https://github.com/splunk/attack_range)
