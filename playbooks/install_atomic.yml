@@ -1,5 +1,5 @@
 ---
-- name: Install and Run Atomic Red Team
+- name: Install and Run Atomic Red Team on Windows
   hosts: windows
   gather_facts: yes
   tasks:
@@ -47,38 +47,103 @@
     - name: Display Test Results
       debug:
         var: test_results.stdout_lines
-# Add new Linux hosts playbook
-- name: Install and Run Atomic Red Team on Linux
+
+- name: Setup and Run Atomic Red Team on Linux using Raw commands
   hosts: linux
-  gather_facts: yes
+  gather_facts: no
+  become: yes
   tasks:
-    - name: Install required packages
-      shell: |
-        apt-get update
-        apt-get install -y git wget rsyslog python3 python3-pip
-      become: yes
-      ignore_errors: yes
+    # Use only raw commands throughout
+    - name: Update package list
+      raw: apt-get update
+      failed_when: false
 
-    - name: Clone Atomic Red Team repository
-      shell: |
-        cd /opt
-        git clone https://github.com/redcanaryco/atomic-red-team.git
-        chmod -R 755 atomic-red-team
-      become: yes
+    - name: Install Python 3.11 and required packages
+      raw: |
+        # Install python3 and dependencies
+        apt-get install -y python3 python3-pip python3-venv git wget rsyslog
+        
+        # Try to get Python 3.11 specifically
+        if ! command -v python3.11 >/dev/null 2>&1; then
+          apt-get install -y software-properties-common
+          # For Ubuntu/Debian
+          add-apt-repository ppa:deadsnakes/ppa -y 2>/dev/null || true
+          apt-get update
+          apt-get install -y python3.11 || true
+        fi
+        
+        # Update alternatives if we have python3.11
+        if command -v python3.11 >/dev/null 2>&1; then
+          update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+        fi
+      failed_when: false
 
-    - name: Execute Linux Attack
-      shell: |
-        cd /opt/atomic-red-team/atomics/T1087/src/
-        chmod +x linux_users.sh
-        ./linux_users.sh 2>&1 | logger -t atomic-test
-      become: yes
+    - name: Create Atomic Red Team directory
+      raw: mkdir -p /opt/atomic-red-team && chmod 755 /opt/atomic-red-team
 
-    - name: Get syslog output
-      shell: |
-        grep "atomic-test" /var/log/syslog | tail -n 20
-      register: syslog_output
+    - name: Clone or update Atomic Red Team repository
+      raw: |
+        if [ -d "/opt/atomic-red-team/.git" ]; then
+          cd /opt/atomic-red-team && git pull
+        else
+          git clone https://github.com/redcanaryco/atomic-red-team.git /opt/atomic-red-team
+        fi
+        chmod -R 755 /opt/atomic-red-team
 
-    - name: Display syslog output
+    - name: Execute test for technique using raw commands
+      raw: |
+        cd /opt/atomic-red-team/atomics/{{ technique_id }}/ || { echo "Technique {{ technique_id }} not found"; exit 1; }
+        
+        # Handle credential dumping specifically
+        if [ "{{ technique_id }}" = "T1003.001" ]; then
+          echo "Executing credential dump simulation..." | logger -t "atomic-test"
+          # Simulate various credential access attempts
+          cat /etc/passwd | grep -v nologin | logger -t "atomic-test"
+          cat /etc/shadow 2>/dev/null | logger -t "atomic-test" || echo "No shadow access" | logger -t "atomic-test"
+          ps aux | grep -E "(ssh|cred|pass)" | logger -t "atomic-test"
+          find /home -name ".bash_history" 2>/dev/null | xargs -I {} head -n 10 {} 2>/dev/null | logger -t "atomic-test"
+          ls -la /etc/ssh/ | logger -t "atomic-test"
+          lastlog | logger -t "atomic-test"
+        elif [ -f "test.sh" ]; then
+          chmod +x test.sh
+          ./test.sh 2>&1 | logger -t "atomic-test"
+        elif [ -f "src/$(basename $PWD).sh" ]; then
+          chmod +x src/$(basename $PWD).sh
+          src/$(basename $PWD).sh 2>&1 | logger -t "atomic-test"
+        else
+          echo "No executable test found for {{ technique_id }}, generating simulated activity..." | logger -t "atomic-test"
+          # Generic activity based on technique
+          case "{{ technique_id }}" in
+            T1057) # Process Discovery
+              ps aux | logger -t "atomic-test"
+              top -b -n 1 | logger -t "atomic-test"
+              ;;
+            T1087*) # Account Discovery
+              getent passwd | logger -t "atomic-test"
+              groups | logger -t "atomic-test"
+              who | logger -t "atomic-test"
+              ;;
+            T1082) # System Information Discovery
+              uname -a | logger -t "atomic-test"
+              lsb_release -a 2>/dev/null | logger -t "atomic-test"
+              cat /proc/cpuinfo | head | logger -t "atomic-test"
+              ;;
+            *)
+              echo "Generic simulation for {{ technique_id }}" | logger -t "atomic-test"
+              ;;
+          esac
+        fi
+      when: technique_id is defined
+
+    - name: Get execution results using raw commands
+      raw: |
+        if [ -f /var/log/syslog ]; then
+          grep "atomic-test" /var/log/syslog | tail -n 50
+        else
+          journalctl -t atomic-test --no-pager -n 50 || echo "No logs found"
+        fi
+      register: execution_results
+
+    - name: Display results
       debug:
-        var: syslog_output.stdout_lines
-
+        msg: "{{ execution_results.stdout_lines }}"
