@@ -29,8 +29,17 @@ if ! command -v az &>/dev/null; then
 fi
 
 # Install Python requirements
+# Create and activate virtual environment
+echo "Creating Python virtual environment..."
+python3 -m venv attack_range_env
+source attack_range_env/bin/activate
+
+# Install Python requirements in the virtual environment
 echo "Installing Python requirements..."
 pip install -r requirements.txt
+
+echo "Virtual environment created at ./attack_range_env"
+echo "Remember to activate it with 'source attack_range_env/bin/activate' before running attack-range.py"
 
 # Check if terraform.tfvars exists
 if [ ! -f "terraform/terraform.tfvars" ]; then
