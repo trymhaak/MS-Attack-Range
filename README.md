@@ -36,17 +36,6 @@ The Microsoft Sentinel Attack Range is a framework for security professionals to
 - **Attack Simulation Framework**: Ansible-based attack automation using Atomic Red Team tests
 - **Data Connectors**: 5 pre-configured data sources (Windows Events, Syslog, Microsoft Defender for Endpoint, Entra ID, Microsoft XDR)
 
-## Components
-
-- **Windows Domain Controller**: A Windows Server virtual machine configured as a domain controller
-- **Windows Workstation**: A Windows 10 machine joined to the domain
-- **Kali Linux**: An attack machine preloaded with security testing tools
-- **Microsoft Sentinel**: A cloud-native SIEM and SOAR solution for security monitoring
-- **Attack Simulation Framework**: Ansible-based attack automation using Atomic Red Team tests
-- **Data Collection Rules**: Automated log collection from all VMs
-- **Attack Simulation Framework**: Ansible-based attack automation using Atomic Red Team tests
-- **Data Connectors**: 5 pre-configured data sources (Windows Events, Syslog, Microsoft Defender for Endpoint, Entra ID, Microsoft XDR)
-
 ## Premium Microsoft Sentinel Connectors
 
 By default, the Attack Range deploys with basic connectors. Optional premium connectors require specific licenses and permissions.
