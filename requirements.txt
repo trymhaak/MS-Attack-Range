@@ -4,3 +4,7 @@ azure-mgmt-network>=19.0.0
 azure-mgmt-compute>=29.1.0
 PyYAML>=5.4.1
 ansible>=2.9.0
+requests>=2.25.0
+pywinrm>=0.4.1
+cryptography>=3.3.2
+jmespath>=0.10.0
