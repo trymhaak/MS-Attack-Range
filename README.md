@@ -57,10 +57,7 @@ To enable these connectors, you need:
 
 ### Enabling Premium Connectors
 
-Set `enable_premium_connectors = true` in your `terraform/terraform.tfvars` file:
-
-```hcl
-enable_premium_connectors = true
+Set `enable_premium_connectors = true` in your `terraform/terraform.tfvars` file
 
 ## Prerequisites
 
