@@ -1,5 +1,6 @@
 # Microsoft Defender for Endpoint Connector
 resource "azurerm_sentinel_data_connector_microsoft_defender_advanced_threat_protection" "defender" {
+  count              = var.enable_premium_connectors ? 1 : 0
   name               = "defender-endpoint"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
   depends_on = [azurerm_log_analytics_workspace.law, azurerm_sentinel_log_analytics_workspace_onboarding.sentinel]
@@ -7,6 +8,7 @@ resource "azurerm_sentinel_data_connector_microsoft_defender_advanced_threat_pro
 
 # Office 365 Connector
 resource "azurerm_sentinel_data_connector_office_365" "o365" {
+  count                    = var.enable_premium_connectors ? 1 : 0
   name                       = "office-365"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
   exchange_enabled          = true
@@ -17,6 +19,7 @@ resource "azurerm_sentinel_data_connector_office_365" "o365" {
 
 # Azure AD (Entra ID) Connector
 resource "azurerm_sentinel_data_connector_azure_active_directory" "aad" {
+  count                    = var.enable_premium_connectors ? 1 : 0
   name                       = "entra-id"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
   depends_on = [azurerm_log_analytics_workspace.law, azurerm_sentinel_log_analytics_workspace_onboarding.sentinel]
@@ -24,6 +27,7 @@ resource "azurerm_sentinel_data_connector_azure_active_directory" "aad" {
 
 # XDR Connector
 resource "azurerm_sentinel_data_connector_microsoft_threat_protection" "xdr" {
+  count                    = var.enable_premium_connectors ? 1 : 0
   name                       = "MicrosoftDefenderXDRConnector"
  log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
  depends_on = [azurerm_log_analytics_workspace.law, azurerm_sentinel_log_analytics_workspace_onboarding.sentinel]
