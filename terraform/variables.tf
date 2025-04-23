@@ -33,3 +33,9 @@ variable "allowed_ip" {
   type        = string
   default     = "0.0.0.0/0"
 }
+
+variable "enable_premium_connectors" {
+  description = "Whether to enable premium connectors that require specific licenses/permissions"
+  type        = bool
+  default     = false
+}
