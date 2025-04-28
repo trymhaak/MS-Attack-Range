@@ -1,0 +1,16 @@
+namespace: "Albert"
+name: "ludus_ms_sentinel"
+version: "1.0.0"
+readme: "README.md"
+authors:
+  - "Albert Timileyin"
+description: "Microsoft Sentinel Attack Range for Ludus"
+license:
+  - "MIT"
+tags:
+  - ludus
+  - sentinel
+  - security
+  - attack
+  - mitre
+repository: "https://github.com/oloruntolaallbert/MS-Attack-Range"
