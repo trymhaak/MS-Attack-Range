@@ -1,0 +1,3 @@
+---
+attack_log_dir: "/tmp/attack_simulation/network_discovery"
+target_ip: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
