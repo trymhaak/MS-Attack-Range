@@ -41,5 +41,16 @@ ludus:
     roles:
       - albert.ludus_ms_sentinel.setup_kali
       - albert.ludus_ms_sentinel.install_atomic
+
+  # Example of post-deployment attack role
+  # This would be run on the Kali VM
+  - ludus:
+      when: post-deploy
+      host: Kali
+    roles:
+      - albert.ludus_ms_sentinel.attack_sequence
     role_vars:
+      attack_types:
+        - network_discovery
+        - credential_access
       target_ip: "10.10.10.11"  # IP of the Workstation
