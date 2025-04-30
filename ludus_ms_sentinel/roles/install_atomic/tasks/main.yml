@@ -1,0 +1,17 @@
+---
+# Windows section
+- name: Install Atomic Red Team on Windows
+  win_shell: |
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
+    Install-AtomicRedTeam -getAtomics -Force
+  when: ansible_os_family == "Windows"
+
+# Linux section
+- name: Clone Atomic Red Team repository for Linux
+  git:
+    repo: https://github.com/redcanaryco/atomic-red-team.git
+    dest: /opt/atomic-red-team
+    force: yes
+  when: ansible_os_family != "Windows"
+  become: yes
