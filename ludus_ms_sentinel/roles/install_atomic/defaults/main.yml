@@ -1,0 +1,3 @@
+---
+# Technique ID can be passed via role_vars in Ludus config
+technique_id: ""
