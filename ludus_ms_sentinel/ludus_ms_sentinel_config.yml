@@ -14,6 +14,8 @@ ludus:
     roles:
       - albert.ludus_ms_sentinel.setup_windows
       - albert.ludus_ms_sentinel.disable_defender
+      # Log Analytics Agent would be installed here in a real Azure environment
+      # We're simulating it in Ludus
 
   - vm_name: "{{ range_id }}-Workstation"
     hostname: "Workstation"
@@ -30,20 +32,20 @@ ludus:
     roles:
       - albert.ludus_ms_sentinel.setup_windows
       - albert.ludus_ms_sentinel.disable_defender
+      # Log Analytics Agent would be installed here in a real Azure environment
+      # We're simulating it in Ludus
 
   - vm_name: "{{ range_id }}-Kali"
     hostname: "Kali"
-    template: kali-template
+    template: kali-template  # Ludus kali template
     vlan: 10
     ip_last_octet: 12
     ram_gb: 4
     cpus: 2
     roles:
       - albert.ludus_ms_sentinel.setup_kali
-      - albert.ludus_ms_sentinel.install_atomic
 
-  # Example of post-deployment attack role
-  # This would be run on the Kali VM
+  # This section runs attacks after deployment
   - ludus:
       when: post-deploy
       host: Kali
@@ -53,4 +55,16 @@ ludus:
       attack_types:
         - network_discovery
         - credential_access
-      target_ip: "10.10.10.11"  # IP of the Workstation
+        - persistence
+        - defense_evasion
+      target_ip: "10.10.10.11"  # IP of the Workstation (adjust based on your network)
+
+  # Additional attack scenarios that can be run manually
+  # Uncomment and modify as needed
+  #- ludus:
+  #    when: post-deploy
+  #    host: Kali
+  #  roles:
+  #    - albert.ludus_ms_sentinel.install_atomic
+  #  role_vars:
+  #    technique_id: "T1003.001"  # Credential Dumping
