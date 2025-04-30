@@ -1,0 +1,7 @@
+---
+- name: Disable Windows Defender
+  win_shell: |
+    Set-MpPreference -DisableRealtimeMonitoring $true
+    Set-MpPreference -DisableIOAVProtection $true
+    Set-MpPreference -DisableBehaviorMonitoring $true
+  ignore_errors: yes
