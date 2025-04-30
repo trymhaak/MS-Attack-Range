@@ -1,0 +1,23 @@
+---
+dependencies: []
+
+galaxy_info:
+  role_name: ludus_ms_sentinel
+  author: Albert Timileyin
+  description: Microsoft Sentinel Attack Range for Ludus
+  company: "Your Company"
+  license: "MIT"
+  min_ansible_version: 2.9
+  platforms:
+    - name: Windows
+      versions:
+        - all
+    - name: Linux
+      versions:
+        - all
+  galaxy_tags:
+    - ludus
+    - sentinel
+    - security
+    - attack
+    - mitre
