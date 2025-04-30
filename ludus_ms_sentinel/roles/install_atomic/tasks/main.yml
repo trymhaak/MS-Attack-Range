@@ -1,17 +1,160 @@
 ---
-# Windows section
-- name: Install Atomic Red Team on Windows
+# For Windows hosts
+- name: Create Atomic Red Team directory (Windows)
+  win_file:
+    path: C:\AtomicRedTeam
+    state: directory
+  when: ansible_os_family == "Windows"
+
+- name: Install NuGet Package Provider (Windows)
+  win_shell: |
+    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+    Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
+  ignore_errors: yes
+  when: ansible_os_family == "Windows"
+
+- name: Install PowerShell-Yaml Module (Windows)
+  win_shell: |
+    Install-Module -Name powershell-yaml -Force -Confirm:$false -AllowClobber
+  ignore_errors: yes
+  when: ansible_os_family == "Windows"
+
+- name: Download and Install Atomic Red Team (Windows)
   win_shell: |
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Set-Location C:\AtomicRedTeam
     IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
     Install-AtomicRedTeam -getAtomics -Force
   when: ansible_os_family == "Windows"
 
-# Linux section
-- name: Clone Atomic Red Team repository for Linux
-  git:
-    repo: https://github.com/redcanaryco/atomic-red-team.git
-    dest: /opt/atomic-red-team
-    force: yes
+- name: Execute Atomic Test (Windows)
+  win_shell: |
+    $env:PSModulePath = $env:PSModulePath + ";C:\AtomicRedTeam"
+    Import-Module "C:\AtomicRedTeam\invoke-atomicredteam\Invoke-AtomicRedTeam.psd1" -Force
+    Set-Location C:\AtomicRedTeam
+    
+    Write-Host "Starting test execution for {{ technique_id }}..."
+    Invoke-AtomicTest {{ technique_id }} -Force | Tee-Object -FilePath "C:\AtomicRedTeam\execution.log"
+  when: ansible_os_family == "Windows" and technique_id is defined
+
+- name: Get Test Results (Windows)
+  win_shell: |
+    if (Test-Path "C:\AtomicRedTeam\execution.log") {
+        Get-Content "C:\AtomicRedTeam\execution.log"
+    } else {
+        Write-Host "Execution log not found"
+    }
+  register: test_results_windows
+  when: ansible_os_family == "Windows" and technique_id is defined
+
+- name: Display Test Results (Windows)
+  debug:
+    var: test_results_windows.stdout_lines
+  when: ansible_os_family == "Windows" and technique_id is defined and test_results_windows is defined
+
+# For Linux hosts
+- name: Update package list (Linux)
+  raw: apt-get update
+  failed_when: false
   when: ansible_os_family != "Windows"
   become: yes
+
+- name: Install Python and required packages (Linux)
+  raw: |
+    # Install python3 and dependencies
+    apt-get install -y python3 python3-pip python3-venv git wget rsyslog
+    
+    # Try to get Python 3.11 specifically
+    if ! command -v python3.11 >/dev/null 2>&1; then
+      apt-get install -y software-properties-common
+      # For Ubuntu/Debian
+      add-apt-repository ppa:deadsnakes/ppa -y 2>/dev/null || true
+      apt-get update
+      apt-get install -y python3.11 || true
+    fi
+    
+    # Update alternatives if we have python3.11
+    if command -v python3.11 >/dev/null 2>&1; then
+      update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+    fi
+  failed_when: false
+  when: ansible_os_family != "Windows"
+  become: yes
+
+- name: Create Atomic Red Team directory (Linux)
+  raw: mkdir -p /opt/atomic-red-team && chmod 755 /opt/atomic-red-team
+  when: ansible_os_family != "Windows"
+  become: yes
+
+- name: Clone or update Atomic Red Team repository (Linux)
+  raw: |
+    if [ -d "/opt/atomic-red-team/.git" ]; then
+      cd /opt/atomic-red-team && git pull
+    else
+      git clone https://github.com/redcanaryco/atomic-red-team.git /opt/atomic-red-team
+    fi
+    chmod -R 755 /opt/atomic-red-team
+  when: ansible_os_family != "Windows"
+  become: yes
+
+- name: Execute test for technique using raw commands (Linux)
+  raw: |
+    cd /opt/atomic-red-team/atomics/{{ technique_id }}/ || { echo "Technique {{ technique_id }} not found"; exit 1; }
+    
+    # Handle credential dumping specifically
+    if [ "{{ technique_id }}" = "T1003.001" ]; then
+      echo "Executing credential dump simulation..." | logger -t "atomic-test"
+      # Simulate various credential access attempts
+      cat /etc/passwd | grep -v nologin | logger -t "atomic-test"
+      cat /etc/shadow 2>/dev/null | logger -t "atomic-test" || echo "No shadow access" | logger -t "atomic-test"
+      ps aux | grep -E "(ssh|cred|pass)" | logger -t "atomic-test"
+      find /home -name ".bash_history" 2>/dev/null | xargs -I {} head -n 10 {} 2>/dev/null | logger -t "atomic-test"
+      ls -la /etc/ssh/ | logger -t "atomic-test"
+      lastlog | logger -t "atomic-test"
+    elif [ -f "test.sh" ]; then
+      chmod +x test.sh
+      ./test.sh 2>&1 | logger -t "atomic-test"
+    elif [ -f "src/$(basename $PWD).sh" ]; then
+      chmod +x src/$(basename $PWD).sh
+      src/$(basename $PWD).sh 2>&1 | logger -t "atomic-test"
+    else
+      echo "No executable test found for {{ technique_id }}, generating simulated activity..." | logger -t "atomic-test"
+      # Generic activity based on technique
+      case "{{ technique_id }}" in
+        T1057) # Process Discovery
+          ps aux | logger -t "atomic-test"
+          top -b -n 1 | logger -t "atomic-test"
+          ;;
+        T1087*) # Account Discovery
+          getent passwd | logger -t "atomic-test"
+          groups | logger -t "atomic-test"
+          who | logger -t "atomic-test"
+          ;;
+        T1082) # System Information Discovery
+          uname -a | logger -t "atomic-test"
+          lsb_release -a 2>/dev/null | logger -t "atomic-test"
+          cat /proc/cpuinfo | head | logger -t "atomic-test"
+          ;;
+        *)
+          echo "Generic simulation for {{ technique_id }}" | logger -t "atomic-test"
+          ;;
+      esac
+    fi
+  when: ansible_os_family != "Windows" and technique_id is defined
+  become: yes
+
+- name: Get execution results using raw commands (Linux)
+  raw: |
+    if [ -f /var/log/syslog ]; then
+      grep "atomic-test" /var/log/syslog | tail -n 50
+    else
+      journalctl -t atomic-test --no-pager -n 50 || echo "No logs found"
+    fi
+  register: execution_results_linux
+  when: ansible_os_family != "Windows" and technique_id is defined
+  become: yes
+
+- name: Display results (Linux)
+  debug:
+    msg: "{{ execution_results_linux.stdout_lines }}"
+  when: ansible_os_family != "Windows" and technique_id is defined and execution_results_linux is defined
