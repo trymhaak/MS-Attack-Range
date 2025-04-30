@@ -1,0 +1,10 @@
+---
+- name: Configure WinRM
+  win_shell: |
+    # Configure WinRM service
+    Set-WSManQuickConfig -Force
+    Set-Item -Path WSMan:\localhost\Service\Auth\Basic -Value $true
+    
+    # Create firewall rules for WinRM
+    New-NetFirewallRule -DisplayName "WinRM HTTP" -Direction Inbound -LocalPort 5985 -Protocol TCP -Action Allow
+    New-NetFirewallRule -DisplayName "WinRM HTTPS" -Direction Inbound -LocalPort 5986 -Protocol TCP -Action Allow
