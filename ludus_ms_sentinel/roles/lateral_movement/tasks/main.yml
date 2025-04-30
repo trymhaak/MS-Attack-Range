@@ -1,1 +1,46 @@
+---
+- name: Create attack log directory
+  win_file:
+    path: "{{ attack_log_dir }}"
+    state: directory
 
+- name: Simulate Lateral Movement Techniques
+  win_shell: |
+    Write-Host "[+] Starting lateral movement simulation"
+    Write-Host "[+] MITRE ATT&CK: T1021, T1077"
+    Write-Host "[+] Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    
+    $attackLogDir = "{{ attack_log_dir }}"
+    
+    # Test 1: Network share enumeration
+    Write-Host "`n=== Test 1: Network Share Enumeration ==="
+    try {
+        Write-Host "Enumerating network shares"
+        Get-WmiObject -Class Win32_Share | Format-Table Name, Path, Description -AutoSize
+        net share
+    } catch {
+        Write-Host "Error enumerating shares: $_"
+    }
+    
+    # Test 2: Remote command execution simulation
+    Write-Host "`n=== Test 2: Remote Execution Simulation ==="
+    Write-Host "Simulating PSExec command"
+    Write-Host "Command: psexec.exe \\target -u domain\user -p password cmd.exe"
+    
+    # Test 3: WMI execution simulation
+    Write-Host "`n=== Test 3: WMI Execution Simulation ==="
+    Write-Host "Simulating WMI execution"
+    Write-Host "Command: wmic /node:target process call create 'cmd.exe /c dir'"
+    
+    # Save results
+    $results = @{
+        "TestTimestamp" = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        "ShareEnumeration" = $true
+        "RemoteExecutionSimulated" = $true
+        "WMIExecutionSimulated" = $true
+    }
+    
+    $results | ConvertTo-Json | Out-File "$attackLogDir\lateral_movement_results.json"
+    Write-Host "`n[+] Lateral movement simulation completed"
+  register: lateral_movement_results
+  ignore_errors: yes
