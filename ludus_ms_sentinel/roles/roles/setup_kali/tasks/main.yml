@@ -1,0 +1,15 @@
+---
+- name: Update package list
+  apt:
+    update_cache: yes
+  become: yes
+
+- name: Install nmap and other tools
+  apt:
+    name:
+      - nmap
+      - hydra
+      - metasploit-framework
+      - python3-pip
+    state: present
+  become: yes
