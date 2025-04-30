@@ -1,1 +1,55 @@
+---
+- name: Create attack log directory
+  win_file:
+    path: "{{ attack_log_dir }}"
+    state: directory
 
+- name: Simulate Impact Techniques
+  win_shell: |
+    Write-Host "[+] Starting impact simulation"
+    Write-Host "[+] MITRE ATT&CK: T1486, T1489, T1490"
+    Write-Host "[+] Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    
+    $attackLogDir = "{{ attack_log_dir }}"
+    
+    # Test 1: Ransomware simulation
+    Write-Host "`n=== Test 1: Ransomware Simulation ==="
+    $testFolder = "$attackLogDir\ransomware_test"
+    New-Item -ItemType Directory -Path $testFolder -Force
+    
+    # Create test files
+    1..5 | ForEach-Object {
+        $fileName = "$testFolder\file_$_.txt"
+        Set-Content -Path $fileName -Value "Test content $_"
+    }
+    
+    # Simulate encryption
+    Get-ChildItem $testFolder -File | ForEach-Object {
+        Write-Host "Simulating encryption of $($_.Name)"
+        Move-Item $_.FullName "$($_.FullName).encrypted"
+    }
+    
+    # Test 2: Service stopping simulation
+    Write-Host "`n=== Test 2: Service Stopping Simulation ==="
+    Write-Host "Simulating service stop commands:"
+    Write-Host "Command: net stop spooler"
+    Write-Host "Command: Stop-Service -Name spooler"
+    
+    # Test 3: System recovery sabotage simulation
+    Write-Host "`n=== Test 3: System Recovery Sabotage ==="
+    Write-Host "Simulating shadow copy deletion:"
+    Write-Host "Command: vssadmin delete shadows /all /quiet"
+    Write-Host "Command: wmic shadowcopy delete"
+    
+    # Save results
+    $results = @{
+        "TestTimestamp" = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        "RansomwareFolder" = $testFolder
+        "SimulatedServiceStop" = "spooler"
+        "SimulatedRecoverySabotage" = $true
+    }
+    
+    $results | ConvertTo-Json | Out-File "$attackLogDir\impact_results.json"
+    Write-Host "`n[+] Impact simulation completed"
+  register: impact_results
+  ignore_errors: yes
