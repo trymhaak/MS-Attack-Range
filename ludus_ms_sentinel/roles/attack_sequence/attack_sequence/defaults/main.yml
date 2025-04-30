@@ -1,0 +1,7 @@
+---
+# List of attack types to run
+attack_types: []
+# Optional technique ID for Atomic Red Team
+technique_id: ""
+# Target IP for network-based attacks
+target_ip: ""
