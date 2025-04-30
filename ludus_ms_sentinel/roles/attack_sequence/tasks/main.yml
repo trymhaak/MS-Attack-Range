@@ -1,0 +1,40 @@
+---
+- name: Run network discovery
+  include_role:
+    name: albert.ludus_ms_sentinel.network_discovery
+  when: '"network_discovery" in attack_types'
+
+- name: Run credential access
+  include_role:
+    name: albert.ludus_ms_sentinel.credential_access
+  when: '"credential_access" in attack_types'
+
+- name: Run persistence
+  include_role:
+    name: albert.ludus_ms_sentinel.persistence
+  when: '"persistence" in attack_types'
+
+- name: Run defense evasion
+  include_role:
+    name: albert.ludus_ms_sentinel.defense_evasion
+  when: '"defense_evasion" in attack_types'
+
+- name: Run lateral movement
+  include_role:
+    name: albert.ludus_ms_sentinel.lateral_movement
+  when: '"lateral_movement" in attack_types'
+
+- name: Run exfiltration
+  include_role:
+    name: albert.ludus_ms_sentinel.exfiltration
+  when: '"exfiltration" in attack_types'
+
+- name: Run impact
+  include_role:
+    name: albert.ludus_ms_sentinel.impact
+  when: '"impact" in attack_types'
+
+- name: Run Atomic Red Team test
+  include_role:
+    name: albert.ludus_ms_sentinel.install_atomic
+  when: 'technique_id is defined and technique_id != ""'
