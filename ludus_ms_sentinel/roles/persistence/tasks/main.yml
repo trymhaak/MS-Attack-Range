@@ -1,1 +1,94 @@
+---
+- name: Create attack log directory
+  win_file:
+    path: "{{ attack_log_dir }}"
+    state: directory
 
+- name: Test Multiple Persistence Techniques
+  win_shell: |
+    Write-Host "[+] Testing multiple persistence techniques"
+    Write-Host "[+] MITRE ATT&CK: T1547.001, T1053.005, T1136"
+    Write-Host "[+] Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    
+    $attackLogDir = "{{ attack_log_dir }}"
+    
+    # Test 1: Registry Run Key persistence
+    Write-Host "`n=== Test 1: Registry Run Key Persistence ==="
+    $runKeys = @(
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce",
+        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run",
+        "HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
+    )
+    
+    foreach ($key in $runKeys) {
+        $testKeyName = "MSAttackRangeTest-$((Get-Date).Ticks)"
+        try {
+            Write-Host "Adding test entry to: $key"
+            New-ItemProperty -Path $key -Name $testKeyName -Value "calc.exe" -PropertyType String -Force
+            Get-ItemProperty -Path $key -Name $testKeyName
+            Remove-ItemProperty -Path $key -Name $testKeyName -Force
+        } catch {
+            Write-Host "Access denied or path does not exist: $key"
+        }
+    }
+    
+    # Test 2: Scheduled Task persistence
+    Write-Host "`n=== Test 2: Scheduled Task Persistence ==="
+    $taskName = "MSAttackRangeTask"
+    $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c echo Persistence test > C:\Windows\Temp\task_test.txt"
+    $trigger = New-ScheduledTaskTrigger -AtLogon
+    
+    try {
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Force
+        Write-Host "Scheduled task created: $taskName"
+        Start-Sleep -Seconds 2
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+        Write-Host "Scheduled task removed"
+    } catch {
+        Write-Host "Error creating scheduled task: $_"
+    }
+    
+    # Test 3: Service creation persistence
+    Write-Host "`n=== Test 3: Service Creation Persistence ==="
+    $serviceName = "MSAttackRangeService"
+    $binaryPath = "C:\Windows\System32\calc.exe"
+    
+    try {
+        Write-Host "Attempting to create service: $serviceName"
+        New-Service -Name $serviceName -BinaryPathName $binaryPath -DisplayName "MS Attack Range Test Service" -StartupType Manual -ErrorAction Stop
+        Get-Service -Name $serviceName
+        Remove-Service -Name $serviceName -Force
+        Write-Host "Service created and removed successfully"
+    } catch {
+        Write-Host "Service creation requires administrative privileges"
+    }
+    
+    # Test 4: Startup folder persistence
+    Write-Host "`n=== Test 4: Startup Folder Persistence ==="
+    $startupFolder = [Environment]::GetFolderPath('Startup')
+    $testScript = Join-Path $startupFolder "MSAttackRangeStartup.bat"
+    
+    try {
+        Set-Content -Path $testScript -Value "@echo off`necho Startup persistence test"
+        Write-Host "Created file in startup folder: $testScript"
+        Start-Sleep -Seconds 2
+        Remove-Item -Path $testScript -Force
+        Write-Host "Startup file removed"
+    } catch {
+        Write-Host "Error accessing startup folder: $_"
+    }
+    
+    # Save results
+    $results = @{
+        "TestTimestamp" = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        "TestedRegistryKeys" = $runKeys
+        "ScheduledTaskName" = $taskName
+        "ServiceName" = $serviceName
+        "StartupPath" = $startupFolder
+    }
+    
+    $results | ConvertTo-Json | Out-File "$attackLogDir\persistence_results.json"
+    Write-Host "`n[+] Persistence testing completed"
+  register: persistence_results
+  ignore_errors: yes
