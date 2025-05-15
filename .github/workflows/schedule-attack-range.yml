@@ -1,0 +1,72 @@
+name: Schedule MS-Attack-Range
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - destroy
+  
+  # Scheduled triggers
+  schedule:
+    # Deploy every Monday at 8:00 AM UTC
+    - cron: '0 8 * * 1'  # Deploy
+    # Destroy every Friday at 5:00 PM UTC
+    - cron: '0 17 * * 5' # Destroy
+
+jobs:
+  manage-attack-range:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+      
+      - name: Determine action
+        id: determine-action
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "ACTION=${{ github.event.inputs.action }}" >> $GITHUB_ENV
+          elif [[ "${{ github.event.schedule }}" == "0 8 * * 1" ]]; then
+            echo "ACTION=deploy" >> $GITHUB_ENV
+          elif [[ "${{ github.event.schedule }}" == "0 17 * * 5" ]]; then
+            echo "ACTION=destroy" >> $GITHUB_ENV
+          else
+            echo "ACTION=unknown" >> $GITHUB_ENV
+          fi
+      
+      - name: Deploy Attack Range
+        if: env.ACTION == 'deploy'
+        run: |
+          cd terraform
+          terraform init
+          terraform apply -auto-approve
+      
+      - name: Destroy Attack Range
+        if: env.ACTION == 'destroy'
+        run: |
+          cd terraform
+          terraform init
+          terraform destroy -auto-approve
